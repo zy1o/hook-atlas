@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "hook-atlas"
@@ -31,8 +31,8 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 Source = "https://github.com/zy1o/hook-atlas"
 Issues = "https://github.com/zy1o/hook-atlas/issues"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/hook_atlas"]
 
 [tool.ruff]
 line-length = 100
