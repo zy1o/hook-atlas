@@ -90,16 +90,20 @@ class Group:
         return len(self.versions)
 
 
-def _shape(nodes: list[flow.FlowNode]) -> list:
+def _shape(nodes: list[flow.FlowNode], bookkeeping: frozenset[str]) -> list:
     """Flow structure with bookkeeping hooks removed, counts kept."""
     return [
-        [node.name, node.count, _shape(node.children)]
+        [node.name, node.count, _shape(node.children, bookkeeping)]
         for node in nodes
-        if node.name not in BOOKKEEPING_HOOKS
+        if node.name not in bookkeeping
     ]
 
 
-def fingerprint(trace: dict[str, Any], phases: Sequence[analysis.Phase] = ()) -> str:
+def fingerprint(
+    trace: dict[str, Any],
+    phases: Sequence[analysis.Phase] = (),
+    bookkeeping: frozenset[str] = BOOKKEEPING_HOOKS,
+) -> str:
     """Hash of everything that would make two versions' pages differ.
 
     Anchors only, never ``fallback_anchors``. A fallback exists so that a
@@ -115,7 +119,7 @@ def fingerprint(trace: dict[str, Any], phases: Sequence[analysis.Phase] = ()) ->
             else analysis.find_subtrees(trace["calls"], phase.anchors)
         )
         variants = flow.phase_variants(subtrees)
-        shapes.append([phase.key, [_shape(variant.flow) for variant in variants]])
+        shapes.append([phase.key, [_shape(variant.flow, bookkeeping) for variant in variants]])
 
     semantics = {
         name: [bool(spec.get("historic")), bool(spec.get("firstresult"))]
