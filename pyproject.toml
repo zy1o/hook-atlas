@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hook-atlas"
+version = "0.1.0"
+description = "Trace and draw the hook execution flow of any pluggy-based application"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Andrzej Ostrowski", email = "a.ostrowski@outlook.com" }]
+keywords = ["pluggy", "hooks", "tracing", "documentation", "visualisation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "pluggy>=1.0",
+    "graphviz>=0.20",
+    "packaging>=23",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.urls]
+Source = "https://github.com/zy1o/hook-atlas"
+Issues = "https://github.com/zy1o/hook-atlas/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

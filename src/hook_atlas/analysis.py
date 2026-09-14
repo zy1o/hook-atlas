@@ -1,0 +1,200 @@
+"""Turn a raw trace into the deduplicated graph a diagram is drawn from.
+
+A trace records every hook call, so a hook called once per item appears once
+per item, subtree and all. A diagram wants the *shape*: each distinct
+containment relationship once, in the order it was first observed.
+
+Phases are supplied by the caller, not defined here. An application that
+declares none gets :data:`WHOLE_RUN`, a single phase holding everything - which
+is what any pluggy application should produce before anyone has described it.
+"""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class Hook:
+    """A hook as it appears in a diagram."""
+
+    name: str
+    historic: bool = False
+    firstresult: bool = False
+    summary: str = ""
+    call_count: int = 0
+    plugins: tuple[str, ...] = ()
+
+    @property
+    def semantics(self) -> str:
+        """Class name used for styling; see the site legend."""
+        if self.historic and self.firstresult:
+            return "both"
+        if self.historic:
+            return "historic"
+        if self.firstresult:
+            return "firstresult"
+        return "plain"
+
+
+@dataclass
+class HookGraph:
+    """Deduplicated containment graph: which hooks are called inside which."""
+
+    key: str
+    title: str
+    description: str = ""
+    hooks: dict[str, Hook] = field(default_factory=dict)
+    edges: list[tuple[str, str]] = field(default_factory=list)
+    roots: list[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return bool(self.hooks)
+
+
+@dataclass(frozen=True)
+class Phase:
+    """A slice of the run, rendered as its own diagram."""
+
+    key: str
+    title: str
+    anchors: tuple[str, ...]
+    description: str
+
+    #: Used only when ``anchors`` match nothing. Under xdist the controller
+    #: never calls pytest_runtest_protocol - the workers do - so anchoring the
+    #: run-test phase only there left the controller's entire scheduling loop,
+    #: and every xdist hook in it, out of the diagrams altogether.
+    fallback_anchors: tuple[str, ...] = ()
+
+
+#: The phase used when an application declares none, and the fallback when the
+#: phases it does declare match nothing in a particular trace. Empty anchors
+#: mean "everything", so this draws the run as one flow rather than no flow.
+WHOLE_RUN = Phase(
+    key="run",
+    title="The whole run",
+    anchors=(),
+    description="Every hook observed, in the order it was called.",
+)
+
+
+def load_trace(path: str | Path) -> dict[str, Any]:
+    return json.loads(Path(path).read_text())
+
+
+def walk(nodes: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """Depth-first walk over raw trace nodes."""
+    for node in nodes:
+        yield node
+        yield from walk(node.get("children", []))
+
+
+def find_subtrees(nodes: list[dict[str, Any]], names: tuple[str, ...]) -> list[dict[str, Any]]:
+    """All nodes matching ``names``, without descending into a match twice."""
+    found: list[dict[str, Any]] = []
+
+    def visit(current: list[dict[str, Any]]) -> None:
+        for node in current:
+            if node["name"] in names:
+                found.append(node)
+            else:
+                visit(node.get("children", []))
+
+    visit(nodes)
+    return found
+
+
+def build_graph(
+    trace: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    key: str = "full",
+    title: str = "Full hook flow",
+    description: str = "",
+) -> HookGraph:
+    """Collapse raw trace nodes into a deduplicated containment graph."""
+    hookspecs = trace.get("hookspecs", {})
+    counts: Counter[str] = Counter()
+    plugins: dict[str, list[str]] = {}
+    edges: list[tuple[str, str]] = []
+    seen_edges: set[tuple[str, str]] = set()
+
+    for node in walk(nodes):
+        counts[node["name"]] += 1
+        known = plugins.setdefault(node["name"], [])
+        for impl in node.get("impls", []):
+            name = impl.get("plugin")
+            if name and name not in known:
+                known.append(name)
+        for child in node.get("children", []):
+            edge = (node["name"], child["name"])
+            if edge not in seen_edges:
+                seen_edges.add(edge)
+                edges.append(edge)
+
+    hooks = {
+        name: Hook(
+            name=name,
+            historic=bool(hookspecs.get(name, {}).get("historic")),
+            firstresult=bool(hookspecs.get(name, {}).get("firstresult")),
+            summary=hookspecs.get(name, {}).get("summary", ""),
+            call_count=count,
+            plugins=tuple(plugins.get(name, ())),
+        )
+        for name, count in counts.items()
+    }
+    roots = [node["name"] for node in nodes]
+    return HookGraph(
+        key=key,
+        title=title,
+        description=description,
+        hooks=hooks,
+        edges=edges,
+        roots=list(dict.fromkeys(roots)),
+    )
+
+
+def phase_subtrees(trace: dict[str, Any], phase: Phase) -> list[dict[str, Any]]:
+    """Subtrees for a phase, falling back where its usual anchor is absent."""
+    if not phase.anchors:
+        return list(trace["calls"])
+    found = find_subtrees(trace["calls"], phase.anchors)
+    if not found and phase.fallback_anchors:
+        found = find_subtrees(trace["calls"], phase.fallback_anchors)
+    return found
+
+
+def resolve_phases(trace: dict[str, Any], phases: Sequence[Phase]) -> list[Phase]:
+    """The phases worth drawing for this trace, never an empty list.
+
+    A phase whose anchors never fire is dropped. If that leaves nothing - an
+    application nobody has described yet, or one whose run took a path its
+    phases do not cover - the whole run is drawn as one flow. Returning an empty
+    list here would render a page with a hook table and no diagram at all, which
+    is the failure this exists to prevent.
+    """
+    drawn = [phase for phase in phases if phase_subtrees(trace, phase)]
+    return drawn or [WHOLE_RUN]
+
+
+def phase_graphs(trace: dict[str, Any], phases: Sequence[Phase]) -> list[HookGraph]:
+    """One graph per phase, skipping phases this trace never exercised."""
+    return [
+        build_graph(trace, phase_subtrees(trace, phase), phase.key, phase.title, phase.description)
+        for phase in resolve_phases(trace, phases)
+    ]
+
+
+def full_graph(trace: dict[str, Any]) -> HookGraph:
+    return build_graph(
+        trace,
+        trace["calls"],
+        key="full",
+        title="Full hook flow",
+        description="Every hook observed in this scenario, deduplicated.",
+    )
