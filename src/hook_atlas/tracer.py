@@ -33,7 +33,9 @@ from typing import Any
 import pluggy
 
 #: Bumped whenever the on-disk trace format changes incompatibly.
-SCHEMA_VERSION = 2
+#: 3 replaced ``environment.pytest`` with ``application`` and ``version``, so a
+#: trace says what it traced instead of assuming.
+SCHEMA_VERSION = 3
 
 #: Hooks whose *original* invocation happens before monitoring can be installed.
 #:
@@ -83,6 +85,14 @@ class CallNode:
     def application(self) -> str:
         """The name pluggy knows this manager by - ``pytest``, ``tox``, ``devpiclient``."""
         return getattr(self.pluginmanager, "project_name", "") or "unknown"
+
+    @property
+    def application_version(self) -> str:
+        """Version of whatever is being traced, by the same route as hookspec
+        sources: ``__version__`` if it exposes one, stdlib metadata otherwise."""
+        module = sys.modules.get(self.application)
+        version = getattr(module, "__version__", None) if module else None
+        return str(version or _distribution_version(self.application) or "")
 
     def to_dict(self) -> dict[str, Any]:
         node: dict[str, Any] = {
@@ -337,12 +347,21 @@ class HookRecorder:
         """The name pluggy knows this manager by - ``pytest``, ``tox``, ``devpiclient``."""
         return getattr(self.pluginmanager, "project_name", "") or "unknown"
 
+    @property
+    def application_version(self) -> str:
+        """Version of whatever is being traced, by the same route as hookspec
+        sources: ``__version__`` if it exposes one, stdlib metadata otherwise."""
+        module = sys.modules.get(self.application)
+        version = getattr(module, "__version__", None) if module else None
+        return str(version or _distribution_version(self.application) or "")
+
     def to_dict(self) -> dict[str, Any]:
         hookspecs = hookspec_metadata(self.pluginmanager)
         return {
             "schema_version": SCHEMA_VERSION,
             "environment": {
                 "application": self.application,
+                "version": self.application_version,
                 "pluggy": pluggy.__version__,
                 "python": platform.python_version(),
                 "platform": sys.platform,
