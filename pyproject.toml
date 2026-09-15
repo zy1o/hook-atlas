@@ -27,6 +27,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
+[project.scripts]
+hook-atlas-trace = "hook_atlas.cli:main"
+
 [project.urls]
 Source = "https://github.com/zy1o/hook-atlas"
 Issues = "https://github.com/zy1o/hook-atlas/issues"
@@ -43,3 +46,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "applications: runs a real pluggy application in a subprocess",
+]
+# the application tests need those applications installed, so they are opt-in
+addopts = "-m 'not applications'"

@@ -10,7 +10,8 @@ to right, with steps running top to bottom inside each - the whole session at a
 glance. It is depth-limited, because at full depth collection alone is 29
 nested steps and the page runs to roughly two and a half screens. Detail lives
 in per-phase diagrams below. That the collection column dwarfs the others is
-not imbalance to correct: it is where pytest's complexity actually is, and the
+not imbalance to correct: it is where the application's complexity actually is,
+and the
 picture should say so.
 
 **Colour is CSS, not baked in.** Nodes carry class attributes naming their
@@ -200,8 +201,8 @@ class _Builder:
         elements: list[tuple[str, str, str | None]] = []
         for node in nodes:
             total = self.totals.get(node.name)
-            # a hook pytest did not declare has no entry in pytest's reference,
-            # so it is drawn without a link rather than with a dead one
+            # a hook the documented namespaces do not cover has no entry to
+            # link to, so it is drawn plain rather than with a dead anchor
             url = self.links.url_for(
                 node.name, self.hookspecs.get(node.name, {}).get("declared_in")
             )

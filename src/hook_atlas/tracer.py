@@ -37,36 +37,39 @@ import pluggy
 #: trace says what it traced instead of assuming.
 SCHEMA_VERSION = 3
 
-#: Hooks whose *original* invocation happens before monitoring can be installed.
+#: Hooks an application calls before a tracer can attach, and so cannot record.
 #:
-#: ``pytest_addoption`` is the earliest hook handed the plugin manager, so it -
-#: and the ``pytest_addhooks`` and ``pytest_cmdline_parse`` calls surrounding
-#: it - are structurally uncapturable.
+#: Empty by default: :func:`watch` installs monitoring from
+#: ``PluginManager.__init__``, and nothing an application does with its manager
+#: can precede the manager existing. It remains a seam because a host that
+#: attaches later has a real prologue and should say so rather than let the
+#: hooks go quietly missing - pytest-hook-atlas attaches through a plugin entry
+#: point, which costs it the three hooks called while plugins are still loading.
 #:
-#: Note the subtlety: ``pytest_addhooks`` and ``pytest_addoption`` are *historic*
-#: hooks, so they replay for plugins registered later. If a conftest or plugin
-#: that implements them is loaded after monitoring installs, they will appear in
-#: the trace - as a replay, not as the original call. A trace therefore says
-#: nothing about whether these ran before it started; they always did.
-#:
-#: Measured, not assumed: ``tests/test_tracer.py`` fails if this set changes.
-#: Hooks an application may call before a tracer can attach. Empty here:
-#: monitoring is installed from ``PluginManager.__init__``, so there is nothing
-#: earlier to miss. Kept as a seam because a host that attaches later - pytest's
-#: ``-p`` plugin entry point did, at ``pytest_addoption`` - has a real prologue
-#: it should declare rather than silently omit.
+#: One subtlety for anyone filling this in: *historic* hooks replay for plugins
+#: registered later, so a prologue hook can still appear in a trace - as a
+#: replay, never as the original call. A trace says nothing about whether these
+#: ran before it started. They always did.
 PROLOGUE_HOOKS: frozenset[str] = frozenset()
 
+#: Where to write the trace, and what to call the run. The label is free-form;
+#: it is recorded verbatim so a trace can be matched back to whatever produced
+#: it - a named scenario, a CI job, a ticket number.
 ENV_TRACE_PATH = "HOOK_ATLAS_TRACE"
 ENV_SCENARIO = "HOOK_ATLAS_SCENARIO"
 ENV_PROCESS = "HOOK_ATLAS_PROCESS"
 
-#: xdist names its workers gw0, gw1, ... and sets this in each of them. The
-#: name is logical rather than a pid, so it stays meaningful in a committed
-#: trace long after the process is gone.
-#: xdist names its workers here. Generic: any application that forks and
-#: wants its children traced separately can set HOOK_ATLAS_PROCESS instead.
+#: Variables that name the current process, most specific first. An application
+#: that forks writes one trace per process, and the files need distinguishing
+#: names. ``HOOK_ATLAS_PROCESS`` is ours, for anything we launch ourselves;
+#: ``PYTEST_XDIST_WORKER`` is pytest-xdist's, listed because a worker inherits
+#: the environment of whatever started it and must still name itself. Both are
+#: logical names rather than pids, so they stay meaningful in a committed trace
+#: long after the process is gone. Add a variable here to support another
+#: application's workers.
 ENV_XDIST_WORKER = "PYTEST_XDIST_WORKER"
+PROCESS_NAME_VARS = (ENV_XDIST_WORKER, ENV_PROCESS)
+
 DEFAULT_TRACE_PATH = "hook-atlas-trace.json"
 
 
@@ -80,19 +83,6 @@ class CallNode:
     impls: list[dict[str, Any]]
     children: list[CallNode] = field(default_factory=list)
     raised: bool = False
-
-    @property
-    def application(self) -> str:
-        """The name pluggy knows this manager by - ``pytest``, ``tox``, ``devpiclient``."""
-        return getattr(self.pluginmanager, "project_name", "") or "unknown"
-
-    @property
-    def application_version(self) -> str:
-        """Version of whatever is being traced, by the same route as hookspec
-        sources: ``__version__`` if it exposes one, stdlib metadata otherwise."""
-        module = sys.modules.get(self.application)
-        version = getattr(module, "__version__", None) if module else None
-        return str(version or _distribution_version(self.application) or "")
 
     def to_dict(self) -> dict[str, Any]:
         node: dict[str, Any] = {
@@ -132,8 +122,8 @@ def _raised(outcome: Any) -> bool:
     """Did the hook call raise?
 
     pluggy >= 1.3 exposes ``Result.exception``; 0.13 and 1.0 expose
-    ``_Result.excinfo``. Both are supported so traces can be captured all the
-    way back to pytest 6.0.
+    ``_Result.excinfo``. Both are supported, so an application pinned to an old
+    pluggy can still be traced.
     """
     if getattr(outcome, "exception", None) is not None:
         return True
@@ -154,8 +144,8 @@ def _plugin_name(impl: Any) -> str | None:
     name = str(name)
     if name.isdigit():
         return "<anonymous>"
-    # A conftest is named by its absolute path, which during capture is a
-    # throwaway directory. Relative is both stable across runs and more useful
+    # A plugin loaded from a file is named by its absolute path, which is often
+    # a throwaway directory. Relative is both stable across runs and more useful
     # to a reader: "conftest.py" rather than /tmp/hook-atlas-matrix-ubv1z_iu/...
     working = os.getcwd()
     if name.startswith(working + os.sep):
@@ -166,9 +156,9 @@ def _plugin_name(impl: Any) -> str | None:
 def _impl_info(impl: Any) -> dict[str, Any]:
     """Summarise a pluggy ``HookImpl``.
 
-    ``plugin_name`` is the provenance we care about: for a conftest it is the
-    file path, which is what lets a scenario diagram show *where* a hook
-    implementation came from.
+    ``plugin_name`` is the provenance we care about: for a plugin loaded from a
+    file it is that path, which is what lets a diagram show *where* an
+    implementation came from rather than only that one exists.
     """
     function = getattr(impl, "function", None)
     return {
@@ -185,16 +175,15 @@ def _impl_info(impl: Any) -> dict[str, Any]:
 def hookspec_metadata(pluginmanager: Any) -> dict[str, dict[str, Any]]:
     """Static facts about every hook *this plugin manager knows about*.
 
-    Read from the live plugin manager rather than by importing
-    ``_pytest.hookspec``, so a project's own hooks are described too. pytest
-    contributes 52; pytest-xdist adds 12 more, and any plugin or conftest that
-    calls ``add_hookspecs`` contributes its own. Hardcoding pytest's module
-    would have meant those rendering with no semantics at all - and it is the
-    reason this can be pointed at an arbitrary project.
+    Read from the live plugin manager rather than by importing a known module,
+    which is what lets this be pointed at an application it has never seen.
+    Whatever the application declares is described, and so is whatever its
+    plugins add - anything calling ``add_hookspecs`` contributes. Hardcoding a
+    module would leave every hook but that module's with no semantics at all.
 
-    Called as late as possible, because plugins register their hookspecs during
-    ``pytest_addhooks``: read at ``pytest_addoption`` time, xdist's twelve are
-    not there yet.
+    Call it as late as possible. Plugins commonly add hookspecs during startup,
+    and anything read before they do will be missing them - pytest-xdist's
+    twelve are not present until after pytest's own addhooks phase.
     """
     metadata: dict[str, dict[str, Any]] = {}
     relay = getattr(pluginmanager, "hook", None)
@@ -227,7 +216,7 @@ def hookspec_metadata(pluginmanager: Any) -> dict[str, dict[str, Any]]:
 def _declaring_module(namespace):
     """The module path a hookspec namespace belongs to.
 
-    pytest hands ``add_hookspecs`` a module, where ``__name__`` is already the
+    Some applications hand ``add_hookspecs`` a module, where ``__name__`` is the
     module path. Plenty of applications hand it a class or an instance instead,
     and there ``__name__`` is the class - ``Spec`` - which is not a module, so
     resolving its distribution or matching it against a documented namespace
@@ -274,13 +263,14 @@ def _distribution_version(package: str) -> str | None:
 def hookspec_sources(metadata: dict[str, dict[str, Any]]) -> dict[str, str]:
     """Version of whatever declared each set of hookspecs.
 
-    pytest's own version is already recorded, but a plugin contributing hooks is
-    otherwise anonymous: a trace could say a run used twelve xdist hooks without
-    saying which xdist.
+    The application's own version is recorded separately, but a plugin
+    contributing hooks is otherwise anonymous: a trace could say a run used
+    twelve hooks from some plugin without saying which release of it.
 
     ``__version__`` is tried first because it is free and usually right; stdlib
-    metadata covers the packages that do not expose one, and resolves a
-    top-level name to its distribution - ``xdist`` is shipped by ``pytest-xdist``.
+    metadata covers packages that do not expose one, and resolves a top-level
+    import name to the distribution shipping it, which are often different -
+    ``xdist`` comes from ``pytest-xdist``.
     """
     sources: dict[str, str] = {}
     for spec in metadata.values():
@@ -350,7 +340,15 @@ class HookRecorder:
     @property
     def application_version(self) -> str:
         """Version of whatever is being traced, by the same route as hookspec
-        sources: ``__version__`` if it exposes one, stdlib metadata otherwise."""
+        sources: ``__version__`` if it exposes one, stdlib metadata otherwise.
+
+        Empty when neither knows. A manager's project name is free-form and need
+        not match any importable package - devpi-client calls its manager
+        ``devpiclient`` while importing as ``devpi`` - and inventing a version
+        would be worse than admitting to not having one. The hookspec sources
+        recorded alongside carry versions for the modules that declared hooks,
+        which is usually the fact anyone actually wants.
+        """
         module = sys.modules.get(self.application)
         version = getattr(module, "__version__", None) if module else None
         return str(version or _distribution_version(self.application) or "")
@@ -366,7 +364,7 @@ class HookRecorder:
                 "python": platform.python_version(),
                 "platform": sys.platform,
                 # which plugin contributed each set of hookspecs, and at what
-                # version - otherwise a trace cannot say which xdist it used
+                # version - otherwise a trace cannot say which release it used
                 "hookspec_sources": hookspec_sources(hookspecs),
             },
             "scenario": {
@@ -394,17 +392,19 @@ _recorder: HookRecorder | None = None
 
 
 def process_name() -> str:
-    """Which process this is, for scenarios that run more than one.
+    """Which process this is, for applications that run more than one.
 
-    Under xdist every worker writes its own trace, and so does the controller -
-    they see genuinely different things, the controller never collecting or
-    running a test at all. Empty for an ordinary single-process run, which
-    keeps those traces named exactly as before.
+    An application that distributes work writes one trace per process, and the
+    processes see genuinely different things - under pytest-xdist the controller
+    never collects or runs a test at all, while its workers do nothing else.
+    Empty for an ordinary single-process run, which leaves those traces named
+    exactly as they would be otherwise.
     """
-    worker = os.environ.get(ENV_XDIST_WORKER)
-    if worker:
-        return worker
-    return os.environ.get(ENV_PROCESS, "")
+    for variable in PROCESS_NAME_VARS:
+        name = os.environ.get(variable)
+        if name:
+            return name
+    return ""
 
 
 def trace_path() -> Path:

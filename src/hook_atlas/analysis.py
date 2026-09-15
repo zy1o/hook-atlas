@@ -66,8 +66,10 @@ class Phase:
     anchors: tuple[str, ...]
     description: str
 
-    #: Used only when ``anchors`` match nothing. Under xdist the controller
-    #: never calls pytest_runtest_protocol - the workers do - so anchoring the
+    #: Used only when ``anchors`` match nothing, which happens when processes
+    #: of one run do different jobs. For example: under pytest-xdist the
+    #: controller never calls pytest_runtest_protocol - the workers do - so
+    #: anchoring the
     #: run-test phase only there left the controller's entire scheduling loop,
     #: and every xdist hook in it, out of the diagrams altogether.
     fallback_anchors: tuple[str, ...] = ()

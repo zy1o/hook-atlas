@@ -137,7 +137,7 @@ def prune(nodes: list[FlowNode], max_depth: int) -> list[FlowNode]:
     """Copy the flow, dropping anything deeper than ``max_depth`` levels.
 
     Used for the session outline: the whole run is ~110 steps, which is too
-    tall to read, but its top two levels are the shape of a pytest session.
+    tall to read, but its top two levels are the shape of the run.
     """
     if max_depth <= 0:
         return []
@@ -154,8 +154,8 @@ def prune(nodes: list[FlowNode], max_depth: int) -> list[FlowNode]:
 #: A stretch at least this long, drawing on no more than this many distinct
 #: hooks, is a candidate for folding when rendering. The threshold is
 #: deliberately high: a dozen steps are worth reading, ninety are not, and
-#: folding too eagerly would hide the handful of xdist hooks that make the
-#: controller's startup worth looking at in the first place.
+#: folding too eagerly hides the occasional interesting hook among the
+#: repetition.
 FOLD_MIN_RUN = 20
 FOLD_MAX_DISTINCT = 5
 
@@ -171,13 +171,12 @@ FOLD_KEEP_MAX = 24
 def _cycle(nodes: list[FlowNode], cap: int = FOLD_KEEP_MAX) -> int:
     """How much of the stretch to keep drawn: enough to show every hook in it.
 
-    Bounded, and that bound is the whole point. Asking only for "every name once"
-    is unbounded: under `--dist each` the controller's report traffic ends with
-    two `pytest_testnodedown` calls, which dragged the prefix to the end of a
-    188-step stretch, left nothing to fold and drew a 14530pt diagram. Cutting
-    instead at the first repeat is bounded but too blunt - it threw away the
-    nested `collect_file` -> `pycollect_makemodule` structure that makes a
-    worker's collection worth looking at.
+    Bounded, and that bound is the whole point. Asking only for "every name
+    once" is unbounded: a hook that fires twice at the very end of a long
+    stretch drags the prefix to the end of it, leaves nothing to fold, and draws
+    a diagram thousands of points tall. Cutting instead at the first repeat is
+    bounded but too blunt - it throws away nested structure that appears only in
+    later turns of the loop, which is often the most informative part.
 
     So: cover what is there, up to a readable number of steps.
     """
@@ -196,11 +195,11 @@ def fold_repetitive(
 ) -> list[FlowNode]:
     """Fold the middle of long stretches that only shuffle a handful of hooks.
 
-    Under xdist the controller's run loop is hundreds of steps of results
-    arriving from workers - logstart, logreport, report_from_serializable,
-    logfinish - in an order that depends on which worker finished first. It
-    collapses to nothing, because consecutive steps are rarely identical, and
-    renders as thousands of pixels of noise that says only "reports came back".
+    The case this was built for: a distributed test run, where the controlling
+    process spends hundreds of steps receiving results from its workers in
+    whatever order they finish. Nothing collapses, because consecutive steps are
+    rarely identical, and it renders as thousands of pixels of noise that says
+    only "results came back".
 
     One turn of the loop is drawn in full, and whatever follows the loop stays
     drawn too; only the repetition between them is summarised. Applied when
@@ -218,8 +217,8 @@ def fold_repetitive(
             seen = candidate
             run_end += 1
 
-        # Whatever follows the loop is not the loop: `pytest_testnodedown`
-        # closing the run, `pytest_collection_modifyitems` closing collection.
+        # Whatever follows the loop is not the loop - the hook that closes the
+        # phase, fired once after all the repetition.
         # Those are worth drawing, so they are trimmed off the stretch and left
         # alone - twice, because the two ways of recognising them catch
         # different things. A hook appearing once is one; and after the cycle is

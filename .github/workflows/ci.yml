@@ -7,6 +7,7 @@ on:
 
 jobs:
   test:
+    name: unit (python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -16,10 +17,69 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install graphviz
-        # the `graphviz` package is bindings; rendering needs the `dot` binary
-        run: sudo apt-get install -y graphviz
+      # the `graphviz` package is bindings; rendering needs the `dot` binary
+      - run: sudo apt-get install -y graphviz
       - run: pip install -e ".[dev]"
       - run: ruff check src/ tests/
       - run: ruff format --check src/ tests/
       - run: pytest -q
+
+  applications:
+    name: against ${{ matrix.application.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      # one application failing should not hide the others - the point of this
+      # job is knowing *which* of them broke
+      fail-fast: false
+      matrix:
+        application:
+          - name: tox
+            install: tox
+            test: tests/applications/test_real_applications.py::test_tox
+          - name: datasette
+            install: datasette
+            test: tests/applications/test_real_applications.py::test_datasette
+          - name: devpi-client
+            install: devpi-client
+            test: tests/applications/test_real_applications.py::test_devpi
+          - name: pytest
+            install: ""
+            test: >-
+              tests/applications/test_real_applications.py::test_pytest
+              tests/applications/test_real_applications.py::test_a_failing_program_still_fails
+              tests/applications/test_real_applications.py::test_output_is_left_alone
+              tests/applications/test_real_applications.py::test_a_command_that_builds_no_plugin_manager_says_so
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y graphviz
+      - run: pip install -e ".[dev]"
+      - name: Install ${{ matrix.application.name }}
+        if: matrix.application.install != ''
+        run: pip install ${{ matrix.application.install }}
+      # -m applications overrides the addopts that deselect them by default.
+      # These are not mocks: they run the real program and assert it still
+      # behaves, so a change here that breaks somebody else's tool is caught.
+      - run: pytest -q -m applications ${{ matrix.application.test }}
+
+  # Nothing in the package may import pytest. It is a test dependency and an
+  # application we trace, never something this library needs.
+  independence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: |
+          python - <<'EOF'
+          import sys, pkgutil, importlib
+          import hook_atlas
+          for module in pkgutil.walk_packages(hook_atlas.__path__, "hook_atlas."):
+              importlib.import_module(module.name)
+          assert "pytest" not in sys.modules, "hook_atlas imported pytest"
+          print(f"imported every module; pytest not among {len(sys.modules)} loaded")
+          EOF

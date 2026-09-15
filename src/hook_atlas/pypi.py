@@ -1,10 +1,11 @@
-"""Ask PyPI what pytest releases exist, and which we can capture.
+"""Ask PyPI what releases of a package exist, and which can be captured here.
 
-The watcher needs three facts about each release that only PyPI knows: when it
-appeared, whether it has been yanked, and which Pythons it runs on. That last
-one is a hard constraint rather than a preference - pytest 6.0 tops out at
-Python 3.9 and pytest 9.0 requires 3.10, so no single interpreter can capture
-the whole range.
+Tracing an application across its history needs three facts about each release
+that only PyPI knows: when it appeared, whether it has been yanked, and which
+Pythons it runs on. That last one is a hard constraint rather than a preference
+- pytest 6.0 tops out at Python 3.9 while pytest 9.0 requires 3.10, so no
+single interpreter can capture the whole range, and any long-lived project will
+have a span like it.
 """
 
 from __future__ import annotations
@@ -26,11 +27,15 @@ PYPI_JSON = "https://pypi.org/pypi/{package}/json"
 #:50+ sequential requests and PyPI throttling turned a 2 minute job into a
 #: 25 minute one - or a CI timeout.
 SUPPORT_CACHE = Path("data/python-support.json")
-USER_AGENT = "pytest-hook-atlas (+https://github.com/zy1o/pytest-hook-atlas)"
 
-#: pytest 6.0 is where this project starts; older releases predate the
-#: hookspec layout the diagrams are built around.
-FLOOR = Version("6.0")
+#: PyPI asks that automated clients identify themselves, and readthedocs
+#: returns 403 to urllib's default. Callers tracing their own project should
+#: say so instead, so a maintainer seeing this in their logs knows who to ask.
+USER_AGENT = "hook-atlas (+https://github.com/zy1o/hook-atlas)"
+
+#: No floor by default: which releases are worth looking at is the caller's
+#: judgement, not this module's.
+FLOOR = Version("0")
 
 
 @dataclass(frozen=True)
@@ -83,7 +88,7 @@ def _classifier_pythons(classifiers: list[str]) -> tuple[str, ...]:
 
 
 def releases(
-    package: str = "pytest",
+    package: str,
     floor: Version = FLOOR,
     include_prereleases: bool = False,
     detailed: bool = False,

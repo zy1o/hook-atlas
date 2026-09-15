@@ -1,14 +1,15 @@
-"""Group pytest versions whose captured flow is the same.
+"""Group releases whose captured flow is the same.
 
-53 pytest releases would make 53 near-identical documents. Most releases change
-nothing about the hook flow, so versions are grouped by a fingerprint of what
-the page would actually say, and one document covers a range.
+Fifty-odd releases of anything would make fifty near-identical documents. Most
+releases change nothing about the hook flow, so versions are grouped by a
+fingerprint of what the page would actually say, and one document covers a
+range.
 
 Two decisions here are load-bearing and easy to get wrong:
 
 **The fingerprint is semantic, not rendered.** Hashing the rendered page would
-group nothing, because documentation links are pinned per pytest version and so
-every page differs by construction. The fingerprint covers the flow shape and
+group nothing, because documentation links are pinned per version and so every
+page differs by construction. The fingerprint covers the flow shape and
 hook semantics only.
 
 **Groups are named by their FIRST version.** Adding a scenario can only ever
@@ -40,20 +41,18 @@ from . import analysis, flow
 #: fingerprint so they do not fragment the site. They are still *rendered* -
 #: this only stops them creating new documents.
 #:
-#: ``pytest_plugin_registered`` fires once per registered plugin, so its count
-#: tracks how many internal plugins a pytest release happens to ship. pytest
-#: 8.3.5 and 8.4.0 differ by nothing else whatsoever (x34 vs x33), and that is
-#: not a flow change anyone wants a separate document for.
+#: Empty by default, and deliberately so: excluding a hook nobody asked to
+#: exclude would quietly change which versions are judged identical. An
+#: application names its own.
 #:
-#: ``pytest_warning_recorded`` is deferred: _pytest/warnings.py wraps five hooks
-#: with warnings.catch_warnings(record=True) and replays the whole batch from a
-#: finally block once the wrapped phase ends. So its position marks a phase
+#: The kind of hook that belongs here is one whose position or count tracks
+#: something other than the flow. Two of pytest's do. ``pytest_plugin_registered``
+#: fires once per registered plugin, so its count tracks how many internal
+#: plugins a release happens to ship - 8.3.5 and 8.4.0 differ by nothing else
+#: whatsoever, x34 against x33. ``pytest_warning_recorded`` is deferred and
+#: replayed in a batch when a wrapped phase ends, so its position marks a phase
 #: boundary rather than where a warning arose, and its count depends on whatever
-#: happened to warn - installed plugins, Python-version deprecations, the test
-#: code itself. Neither is a property of the pytest release being documented.
-#: Applications name their own; pytest's are passed in by its wrapper. Empty by
-#: default, because excluding a hook nobody asked to exclude would quietly
-#: change which versions are judged identical.
+#: happened to warn.
 BOOKKEEPING_HOOKS: frozenset[str] = frozenset()
 
 FINGERPRINT_LENGTH = 12
@@ -154,7 +153,7 @@ def group_versions(fingerprints: dict[str, str], application: str = "") -> list[
 
 
 def retain(groups: list[Group], major_versions: int) -> list[Group]:
-    """Keep only groups whose newest version is in the last N pytest majors.
+    """Keep only groups whose newest version is in the last N major versions.
 
     Retention governs what is *rendered*, never what is stored: every trace
     stays committed, so a dropped group can be brought back by changing this

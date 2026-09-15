@@ -2,11 +2,11 @@
 
 Every trace already records the plugins behind each hook call, so this needs no
 new capture - it reads what is committed. The work is reconciliation: a page
-covers a *range* of pytest releases, and implementers can differ across that
+covers a *range* of releases, and implementers can differ across that
 range even when the flow does not.
 
-That happens. In the baseline scenario, ``pytest_cmdline_main`` moved from the
-``python`` plugin to ``fixtures`` at pytest 8.2.0 without changing the flow at
+That happens. pytest moved ``pytest_cmdline_main`` from its ``python`` plugin
+to ``fixtures`` at 8.2.0 without changing the flow at
 all, so one page covers releases that disagree. Rendering only the newest
 release's answer would have been quietly wrong for the other nineteen.
 """
@@ -24,19 +24,22 @@ class Implementation:
     plugin: str
     owner: str
     flags: tuple[str, ...] = ()
+    #: Module prefixes belonging to the application itself. See
+    #: :func:`internal_prefixes`.
+    internal_prefixes: tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
         """Full name, with the plugin's registered name when it differs.
 
         The two are genuinely different things: ``capturemanager`` is an
-        instance of ``CaptureManager`` living in ``_pytest.capture``, and the
-        registered name is what you would pass to ``-p`` or look up with
-        ``pluginmanager.get_plugin()``. Showing only one loses something.
+        instance of some class living in some module, and the registered name
+        is what you would look up with ``pluginmanager.get_plugin()``. Showing
+        only one of them loses something.
         """
-        # Every conftest imports as the module "conftest", so the module name
-        # distinguishes nothing - the path is the identity, and in a project
-        # with nested conftests it is the only thing that tells them apart.
+        # A plugin loaded from a path is identified by that path. Several may
+        # share a module name - pytest's conftest.py files all import as
+        # "conftest" - and then the path is the only thing telling them apart.
         if self.plugin.endswith(".py"):
             return self.plugin
         if not self.owner:
@@ -68,16 +71,20 @@ class Implementation:
 
     @property
     def internal(self) -> bool:
-        """Is this one of pytest's own plugins?
+        """Does the traced application implement this hook itself?
 
-        pytest implements nearly all of itself as plugins, so on most hooks the
-        list is entirely internal. Someone debugging their own plugins wants
-        the handful that are not.
+        Applications built on pluggy tend to implement most of themselves as
+        plugins, so on many hooks the list is entirely internal. Someone reading
+        the table wants the handful that are not - their own code, and the
+        third-party plugins they installed.
+
+        False when no prefixes are supplied, which is the honest answer: without
+        knowing what the application is, nothing can be called internal to it.
         """
-        return self.owner.startswith(("_pytest.", "pytest.")) or self.owner in {
-            "_pytest",
-            "pytest",
-        }
+        if not self.internal_prefixes:
+            return False
+        bare = tuple(prefix.rstrip(".") for prefix in self.internal_prefixes)
+        return self.owner.startswith(self.internal_prefixes) or self.owner in bare
 
 
 @dataclass(frozen=True)
@@ -118,13 +125,13 @@ class HookImplementers:
     def deltas(self) -> list[tuple[str, tuple[str, ...], tuple[str, ...]]]:
         """Each change as (release, gained, lost) rather than a full re-listing.
 
-        pytest_configure is implemented by eighteen plugins and changed five
-        times across one page's range; printing the whole list five times is
-        unreadable. What changed is short, and is what a reader wants.
+        A widely-implemented hook may have eighteen implementations and change five
+                times across one page's range; printing the whole list five times is
+                unreadable. What changed is short, and is what a reader wants.
 
-        Gains and losses are full labels, not bare plugin names: "gained
-        ``_pytest.unraisableexception``" says where to look, where "gained
-        ``unraisableexception``" only says what it is called.
+                Gains and losses are full labels, not bare plugin names: "gained
+                ``_pytest.unraisableexception``" says where to look, where "gained
+                ``unraisableexception``" only says what it is called.
         """
         changes = []
         for older, newer in zip(self.runs, self.runs[1:], strict=False):
@@ -147,8 +154,8 @@ def _owner(impl: dict[str, Any], hook: str) -> str:
     """Where the implementation lives: module, or module.Class for a method.
 
     The qualname ends with the hook name, which is the table row already, so it
-    is trimmed: ``_pytest.capture.CaptureManager.pytest_runtest_setup`` reads
-    better as ``_pytest.capture.CaptureManager``.
+    is trimmed: ``some.module.CaptureManager.pytest_runtest_setup`` reads better
+    as ``some.module.CaptureManager``.
     """
     module = impl.get("module") or ""
     function = impl.get("function") or ""
@@ -164,7 +171,21 @@ def _flags(impl: dict[str, Any]) -> tuple[str, ...]:
     return tuple(flag for flag in ORDERING_FLAGS if impl.get(flag))
 
 
-def _implementations_by_hook(trace: dict[str, Any]) -> dict[str, tuple[Implementation, ...]]:
+def internal_prefixes(application: str) -> tuple[str, ...]:
+    """Module prefixes an application's own plugins live under.
+
+    ``pytest`` implements itself in ``_pytest``; plenty of projects keep their
+    internals under a leading underscore like that, so both spellings are
+    returned. An application that does neither can pass its own.
+    """
+    if not application:
+        return ()
+    return (f"{application}.", f"_{application}.")
+
+
+def _implementations_by_hook(
+    trace: dict[str, Any], internal: tuple[str, ...] = ()
+) -> dict[str, tuple[Implementation, ...]]:
     """Implementations per hook, in the order pluggy called them.
 
     Order is not incidental - it is tryfirst/trylast and registration order,
@@ -173,8 +194,8 @@ def _implementations_by_hook(trace: dict[str, Any]) -> dict[str, tuple[Implement
 
     pluggy stores hook_impls in *reverse* call order and iterates them with
     ``reversed()``, which is why a ``trylast`` implementation sits at index 0.
-    They are reversed here so the table reads top to bottom in the order pytest
-    actually runs them.
+    They are reversed here so the table reads top to bottom in the order they
+    actually run.
     """
     found: dict[str, list[Implementation]] = {}
     seen: dict[str, set[tuple[str, str]]] = {}
@@ -189,6 +210,7 @@ def _implementations_by_hook(trace: dict[str, Any]) -> dict[str, tuple[Implement
                     plugin=str(impl.get("plugin") or ""),
                     owner=_owner(impl, hook),
                     flags=_flags(impl),
+                    internal_prefixes=internal,
                 )
                 if item.key not in known:
                     known.add(item.key)
@@ -200,7 +222,9 @@ def _implementations_by_hook(trace: dict[str, Any]) -> dict[str, tuple[Implement
 
 
 def reconcile(
-    traces: dict[str, dict[str, Any]], versions: tuple[str, ...]
+    traces: dict[str, dict[str, Any]],
+    versions: tuple[str, ...],
+    internal: tuple[str, ...] = (),
 ) -> dict[str, HookImplementers]:
     """Collapse per-release implementer sets into runs, oldest first.
 
@@ -208,7 +232,7 @@ def reconcile(
     is built that way.
     """
     per_version = {
-        version: _implementations_by_hook(traces[version])
+        version: _implementations_by_hook(traces[version], internal)
         for version in versions
         if version in traces
     }

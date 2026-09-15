@@ -10,8 +10,10 @@ documentation. This library captures them from a real run and draws the result.
 
 ## Status
 
-Early. The library works; the `hook-atlas trace -- <command>` CLI is not built
-yet. The first consumer is
+Early. The library works and there is a minimal front end; the full
+`hook-atlas trace -- <command>` CLI is not built yet. CI runs it against tox,
+datasette, devpi-client and pytest on every change, so "it works on things
+nobody described to it" is checked rather than hoped for. The first consumer is
 [pytest-hook-atlas](https://github.com/zy1o/pytest-hook-atlas), which publishes
 [an atlas of pytest's hooks](https://zy1o.github.io/pytest-hook-atlas/).
 
@@ -29,6 +31,10 @@ tracer.write_trace()    # a JSON record of every call, in order, with provenance
 `watch()` wraps `PluginManager.__init__`, which is the only way to reach a
 manager in a program you are not modifying. `attach(pm)` is the polite version
 for an application tracing itself.
+
+The program being traced is left alone. It keeps its own stdout and its own
+exit code - a wrapper that turned a failing build green would be worse than no
+wrapper at all, so that is a test.
 
 From a trace you get the call tree with nesting and ordering preserved, the
 plugin behind every implementation in pluggy's real call order, hookspec
