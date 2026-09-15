@@ -1,0 +1,166 @@
+"""Group releases whose captured flow is the same.
+
+Fifty-odd releases of anything would make fifty near-identical documents. Most
+releases change nothing about the hook flow, so versions are grouped by a
+fingerprint of what the page would actually say, and one document covers a
+range.
+
+Two decisions here are load-bearing and easy to get wrong:
+
+**The fingerprint is semantic, not rendered.** Hashing the rendered page would
+group nothing, because documentation links are pinned per version and so every
+page differs by construction. The fingerprint covers the flow shape and
+hook semantics only.
+
+**Groups are named by their FIRST version.** Adding a scenario can only ever
+split groups, never merge them - it refines the partition - so a version that
+starts a group always starts a group. Naming by the last version instead would
+silently change what an existing URL means: /flows/9.1.1/ covering 8.1.1-9.1.1
+today would come to mean 9.1.0-9.1.1 tomorrow, and anyone who linked it would
+land on different content. First-version naming makes new scenarios purely
+additive.
+
+Grouping is per scenario, deliberately. A scenario that cannot distinguish two
+versions should say so, rather than inheriting split points from a scenario
+that can - and it keeps adding a scenario from disturbing the others.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from packaging.version import Version
+
+from . import analysis, flow
+
+#: Hooks whose call pattern is bookkeeping rather than flow, excluded from the
+#: fingerprint so they do not fragment the site. They are still *rendered* -
+#: this only stops them creating new documents.
+#:
+#: Empty by default, and deliberately so: excluding a hook nobody asked to
+#: exclude would quietly change which versions are judged identical. An
+#: application names its own.
+#:
+#: The kind of hook that belongs here is one whose position or count tracks
+#: something other than the flow. Two of pytest's do. ``pytest_plugin_registered``
+#: fires once per registered plugin, so its count tracks how many internal
+#: plugins a release happens to ship - 8.3.5 and 8.4.0 differ by nothing else
+#: whatsoever, x34 against x33. ``pytest_warning_recorded`` is deferred and
+#: replayed in a batch when a wrapped phase ends, so its position marks a phase
+#: boundary rather than where a warning arose, and its count depends on whatever
+#: happened to warn.
+BOOKKEEPING_HOOKS: frozenset[str] = frozenset()
+
+FINGERPRINT_LENGTH = 12
+
+
+@dataclass(frozen=True)
+class Group:
+    """A run of consecutive releases that produced the same flow."""
+
+    fingerprint: str
+    versions: tuple[str, ...]
+    #: What the versions are versions *of*, for labelling. The application being
+    #: traced, not this package.
+    application: str = ""
+
+    @property
+    def key(self) -> str:
+        """URL-stable identity: the version the flow first appeared in."""
+        return self.versions[0]
+
+    @property
+    def newest(self) -> str:
+        """Latest version in the group; its docs are the ones worth linking to."""
+        return self.versions[-1]
+
+    @property
+    def label(self) -> str:
+        name = f"{self.application} " if self.application else ""
+        if len(self.versions) == 1:
+            return f"{name}{self.versions[0]}"
+        return f"{name}{self.versions[0]} - {self.versions[-1]}"
+
+    def __len__(self) -> int:
+        return len(self.versions)
+
+
+def _shape(nodes: list[flow.FlowNode], bookkeeping: frozenset[str]) -> list:
+    """Flow structure with bookkeeping hooks removed, counts kept."""
+    return [
+        [node.name, node.count, _shape(node.children, bookkeeping)]
+        for node in nodes
+        if node.name not in bookkeeping
+    ]
+
+
+def fingerprint(
+    trace: dict[str, Any],
+    phases: Sequence[analysis.Phase] = (),
+    bookkeeping: frozenset[str] = BOOKKEEPING_HOOKS,
+) -> str:
+    """Hash of everything that would make two versions' pages differ.
+
+    Anchors only, never ``fallback_anchors``. A fallback exists so that a
+    process which never calls the usual anchor still gets drawn; letting it into
+    the fingerprint would make a trace's identity depend on which of two anchors
+    happened to fire, and regroup pages that have not changed.
+    """
+    shapes = []
+    for phase in phases or (analysis.WHOLE_RUN,):
+        subtrees = (
+            list(trace["calls"])
+            if not phase.anchors
+            else analysis.find_subtrees(trace["calls"], phase.anchors)
+        )
+        variants = flow.phase_variants(subtrees)
+        shapes.append([phase.key, [_shape(variant.flow, bookkeeping) for variant in variants]])
+
+    semantics = {
+        name: [bool(spec.get("historic")), bool(spec.get("firstresult"))]
+        for name, spec in trace.get("hookspecs", {}).items()
+    }
+    payload = json.dumps({"phases": shapes, "hookspecs": semantics}, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:FINGERPRINT_LENGTH]
+
+
+def group_versions(fingerprints: dict[str, str], application: str = "") -> list[Group]:
+    """Collapse ``{version: fingerprint}`` into consecutive runs, oldest first.
+
+    Only *consecutive* versions merge. If a flow changes and later reverts - as
+    pytest did across 8.1.0 and 8.1.1 - those stay separate groups, because
+    collapsing them would imply a continuity that did not exist.
+    """
+    if not fingerprints:
+        return []
+
+    ordered = sorted(fingerprints, key=Version)
+    groups: list[list[str]] = [[ordered[0]]]
+    for previous, current in zip(ordered, ordered[1:], strict=False):
+        if fingerprints[current] == fingerprints[previous]:
+            groups[-1].append(current)
+        else:
+            groups.append([current])
+
+    return [
+        Group(fingerprint=fingerprints[g[0]], versions=tuple(g), application=application)
+        for g in groups
+    ]
+
+
+def retain(groups: list[Group], major_versions: int) -> list[Group]:
+    """Keep only groups whose newest version is in the last N major versions.
+
+    Retention governs what is *rendered*, never what is stored: every trace
+    stays committed, so a dropped group can be brought back by changing this
+    number and rebuilding.
+    """
+    if not groups:
+        return []
+    majors = sorted({Version(group.newest).major for group in groups}, reverse=True)
+    keep = set(majors[:major_versions])
+    return [group for group in groups if Version(group.newest).major in keep]

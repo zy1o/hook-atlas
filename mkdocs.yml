@@ -1,0 +1,33 @@
+site_name: hook-atlas
+site_description: Trace and draw the hook execution flow of any pluggy-based application
+site_url: https://zy1o.github.io/hook-atlas/
+repo_url: https://github.com/zy1o/hook-atlas
+edit_uri: ""
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Dark }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Light }
+  features:
+    - content.code.copy
+    - navigation.instant
+    - navigation.sections
+
+nav:
+  - What it is: index.md
+  - Getting started: getting-started.md
+  - Describing an application: configuring.md
+  - How it works: how-it-works.md
+  - Releases: releases.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.snippets: { base_path: ["."] }
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - toc: { permalink: true }

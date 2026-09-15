@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hook-atlas"
+version = "0.1.0"
+description = "Trace and draw the hook execution flow of any pluggy-based application"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Andrzej Ostrowski", email = "a.ostrowski@outlook.com" }]
+keywords = ["pluggy", "hooks", "tracing", "documentation", "visualisation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "pluggy>=1.0",
+    "graphviz>=0.20",
+    "packaging>=23",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "pymdown-extensions>=10.8"]
+
+[project.scripts]
+hook-atlas = "hook_atlas.cli:main"
+
+[project.urls]
+Source = "https://github.com/zy1o/hook-atlas"
+Issues = "https://github.com/zy1o/hook-atlas/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hook_atlas"]
+# example configs ship with the package so a downstream consumer can test
+# against them rather than keeping its own copy in step by hand
+artifacts = ["src/hook_atlas/examples/*.toml"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "applications: runs a real pluggy application in a subprocess",
+]
+# the application tests need those applications installed, so they are opt-in
+addopts = "-m 'not applications'"
