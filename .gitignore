@@ -5,3 +5,7 @@ dist/
 build/
 .pytest_cache/
 .ruff_cache/
+
+# traces produced by running the tool
+hook-atlas-trace*.json
+*-trace.json
