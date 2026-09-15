@@ -89,13 +89,65 @@ program does:
   forgiving on purpose; strictness belongs in `hook_atlas.validate`, which runs
   afterwards where failing is free.
 
+## Changing something means changing the documentation
+
+The docs under `docs/` are part of the software, not a description of it written
+afterwards. A change that makes them wrong is not finished.
+
+**Change a public interface - a function signature, a CLI command, a flag, a
+config key - and the docs change in the same commit.** Not a follow-up, not a
+tidy-up later: the first person to find a stale flag is a stranger following the
+getting-started guide, and they have no way to tell whether the tool or the page
+is wrong.
+
+- `docs/getting-started.md` and `docs/configuring.md` show commands and flags.
+  `tests/test_docs.py` checks that every one of them still exists and still
+  parses, so this is enforced rather than remembered - but it only checks what
+  can be checked mechanically. Prose that has quietly become untrue still needs
+  a human to notice.
+- **Change the architecture or what capture records** - how attachment works,
+  what lands in a trace, what a fingerprint covers, what folding does - and
+  `docs/how-it-works.md` needs revisiting. That page exists to explain the
+  decisions; a decision that has changed and is still described the old way is
+  worse than no page at all.
+- Adding a config key means documenting it in the table on
+  `docs/configuring.md`. A test asserts the keys are mentioned; it cannot assert
+  they are explained.
+
+## Versions and the changelog
+
+Every user-visible change gets a `CHANGELOG.md` entry under `[Unreleased]`, in
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form. Keep entries to a
+line or two, leading with what changed; the long version belongs in the commit
+message.
+
+Versioning is [semver](https://semver.org/). **The user decides when a release
+happens and what the number is.** Never bump a version, tag, or publish because
+it seems due - see "Stop and ask" above, and note that a version published to
+PyPI can never be reused, even after deletion.
+
+When a number *is* proposed, read the `[Unreleased]` entries before agreeing to
+it. They say what kind of change has accumulated:
+
+- anything removed, renamed, or given different behaviour under the same name is
+  a **breaking** change,
+- anything added that did not exist is a **feature**,
+- everything else is a **fix**.
+
+If the proposed number does not match what is in there - a patch bump over a
+renamed command, say - **say so once, plainly, and ask.** Then do what the user
+decides. It is their project and there are good reasons to depart from semver;
+what there is no good reason for is departing from it by accident.
+
+While the version is `0.x`, semver already permits breaking changes in a minor
+bump. Say when a change is breaking anyway, so the decision to accept it is one
+somebody made.
+
 ## House style
 
 - **Explain *why* in comments**, not what. Most non-obvious code here exists
   because something failed in a particular way. Say which.
 - Tests are named for the behaviour they protect, not the function they call.
-- Keep changelog entries to a line or two; the commit message is where the long
-  version goes.
 
 ## Commands
 
