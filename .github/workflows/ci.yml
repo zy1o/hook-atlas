@@ -33,14 +33,17 @@ jobs:
       fail-fast: false
       matrix:
         application:
+          # Pinned, for the same reason scenario plugins are pinned elsewhere:
+          # an unpinned application turns "did we break it?" into "did they
+          # change something?" at the least convenient moment. Bump deliberately.
           - name: tox
-            install: tox
+            install: tox==4.31.0
             test: tests/applications/test_real_applications.py::test_tox
           - name: datasette
-            install: datasette
+            install: datasette==0.65.4
             test: tests/applications/test_real_applications.py::test_datasette
           - name: devpi-client
-            install: devpi-client
+            install: devpi-client==7.3.0
             test: tests/applications/test_real_applications.py::test_devpi
           - name: pytest
             install: ""
@@ -83,3 +86,75 @@ jobs:
           assert "pytest" not in sys.modules, "hook_atlas imported pytest"
           print(f"imported every module; pytest not among {len(sys.modules)} loaded")
           EOF
+
+  # Trace pytest running a *real* project's test suite, not one we wrote.
+  #
+  # Deliberate, and the risk is accepted: a synthetic suite only ever exercises
+  # what we thought to put in it, and is therefore never wrong in the ways real
+  # projects are. datasette's suite brought pytest-asyncio, pytest-xdist and
+  # pytest-timeout with it, and found a crash on the first run - its tests chdir
+  # into temporary directories and delete them, and os.getcwd() raised inside
+  # the tracer. Nothing we would have written ourselves would have done that.
+  #
+  # The cost is that this job can go red because datasette changed rather than
+  # because we did, which is why the version is pinned.
+  real-suite:
+    name: pytest running datasette's own tests
+    runs-on: ubuntu-latest
+    env:
+      DATASETTE_VERSION: "0.65.4"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: hook-atlas
+      - uses: actions/checkout@v4
+        with:
+          repository: simonw/datasette
+          ref: ${{ env.DATASETTE_VERSION }}
+          path: datasette
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y graphviz
+      - run: pip install -e ./hook-atlas "./datasette[test]"
+      - name: Trace pytest running datasette's tests
+        working-directory: datasette
+        env:
+          HOOK_ATLAS_TRACE: ${{ github.workspace }}/datasette-suite.json
+        run: |
+          python -c "import sys; from hook_atlas.cli import run; sys.exit(run(sys.argv[1:]))" \
+            pytest -q -p no:cacheprovider tests/test_utils.py
+      - name: Validate the trace
+        run: python -m hook_atlas.validate datasette-suite.json
+
+  # Trace pytest running our own test suite.
+  #
+  # Also deliberate. Self-reference has one genuine hazard and we hit it: the
+  # tests that exercise watch()/attach() manipulate the same module-level state
+  # the outer trace is using, and fail when traced. They are excluded rather
+  # than worked around, because a tracer that could trace its own tracer tests
+  # would be a tracer that no longer has a single recorder, which is a worse
+  # design for a real reason.
+  #
+  # What is left is worth having: it is the only leg where the traced suite
+  # changes as we work, so it notices when our own code starts doing something
+  # the tracer cannot follow.
+  dogfood:
+    name: pytest running our own tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y graphviz
+      - run: pip install -e ".[dev]"
+      - name: Trace our own suite
+        env:
+          HOOK_ATLAS_TRACE: ${{ github.workspace }}/dogfood.json
+        run: |
+          python -c "import sys; from hook_atlas.cli import run; sys.exit(run(sys.argv[1:]))" \
+            pytest -q -p no:cacheprovider tests/ \
+              --ignore tests/test_tracer.py --ignore tests/applications
+      - name: Validate the trace
+        run: python -m hook_atlas.validate dogfood.json

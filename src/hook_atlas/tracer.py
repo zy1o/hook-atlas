@@ -147,7 +147,15 @@ def _plugin_name(impl: Any) -> str | None:
     # A plugin loaded from a file is named by its absolute path, which is often
     # a throwaway directory. Relative is both stable across runs and more useful
     # to a reader: "conftest.py" rather than /tmp/hook-atlas-matrix-ubv1z_iu/...
-    working = os.getcwd()
+    try:
+        working = os.getcwd()
+    except OSError:
+        # The traced program deleted the directory it was working in, which
+        # test suites do all the time - datasette's chdir into temporary
+        # directories and remove them. An absolute path is a worse label than a
+        # relative one, and far better than a traceback out of a tracer that is
+        # supposed to be invisible.
+        return name
     if name.startswith(working + os.sep):
         return os.path.relpath(name, working)
     return name

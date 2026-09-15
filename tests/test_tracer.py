@@ -115,3 +115,20 @@ def test_declared_in_is_a_module_even_when_the_namespace_is_a_class():
     specs = tracer.hookspec_metadata(manager())
 
     assert specs["demo_start"]["declared_in"] == __name__
+
+
+def test_a_deleted_working_directory_does_not_break_naming(tmp_path, monkeypatch):
+    """Test suites chdir into temporary directories and delete them.
+
+    os.getcwd() then raises, and a tracer that lets that escape has broken a
+    program it was only supposed to watch. Found against datasette's suite.
+    """
+    doomed = tmp_path / "gone"
+    doomed.mkdir()
+    monkeypatch.chdir(doomed)
+    doomed.rmdir()
+
+    class Impl:
+        plugin_name = "/somewhere/conftest.py"
+
+    assert tracer._plugin_name(Impl()) == "/somewhere/conftest.py"
