@@ -28,7 +28,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
-hook-atlas-trace = "hook_atlas.cli:main"
+hook-atlas = "hook_atlas.cli:main"
 
 [project.urls]
 Source = "https://github.com/zy1o/hook-atlas"

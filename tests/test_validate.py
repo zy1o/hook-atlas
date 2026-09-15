@@ -80,3 +80,74 @@ def test_main_reports_failure_with_an_exit_code(tmp_path, capsys):
 
     assert validate.main([str(bad)]) == 1
     assert "FAIL" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------
+# the command line, which is how anyone actually reaches any of this
+
+
+def test_the_trace_subcommand_keeps_the_program_s_own_separator():
+    """`hook-atlas trace -- tox r -e py -- --lf` must deliver the second `--`.
+
+    Only the first belongs to us; the rest is the command's business.
+    """
+    from hook_atlas import cli
+
+    assert cli._strip_leading_separator(["--", "tox", "r", "--", "--lf"]) == [
+        "tox",
+        "r",
+        "--",
+        "--lf",
+    ]
+    assert cli._strip_leading_separator(["pytest", "-q"]) == ["pytest", "-q"]
+
+
+def test_draw_writes_a_page_someone_can_open(tmp_path):
+    """The point of the tool is the picture, so `draw` has to produce something
+    a browser shows without a site around it."""
+    import json
+
+    from hook_atlas import cli
+
+    trace = tmp_path / "t.json"
+    trace.write_text(
+        json.dumps(
+            {
+                "calls": [{"name": "app_start", "children": [], "impls": []}],
+                "hookspecs": {},
+                "stats": {"total_calls": 1, "unique_hooks": 1},
+                "environment": {"application": "app", "version": "2.0", "pluggy": "1.6.0"},
+                "desyncs": [],
+            }
+        )
+    )
+
+    page = cli.draw(trace, tmp_path / "flow.html")
+    text = page.read_text()
+
+    assert text.startswith("<!doctype html>")
+    assert "app 2.0" in text
+    assert "<svg" in text and "app_start" in text
+
+
+def test_draw_writes_bare_svg_when_asked_for_one(tmp_path):
+    import json
+
+    from hook_atlas import cli
+
+    trace = tmp_path / "t.json"
+    trace.write_text(
+        json.dumps(
+            {
+                "calls": [{"name": "app_start", "children": [], "impls": []}],
+                "hookspecs": {},
+                "stats": {},
+                "environment": {},
+                "desyncs": [],
+            }
+        )
+    )
+
+    text = cli.draw(trace, tmp_path / "flow.svg").read_text()
+
+    assert text.lstrip().startswith("<svg")
