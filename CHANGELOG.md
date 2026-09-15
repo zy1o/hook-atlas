@@ -5,7 +5,7 @@ and [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-09-15
 
 First release. The engine extracted from
 [pytest-hook-atlas](https://github.com/zy1o/pytest-hook-atlas), with pytest
