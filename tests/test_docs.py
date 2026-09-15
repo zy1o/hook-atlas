@@ -85,3 +85,38 @@ def test_the_configuring_page_documents_every_config_key():
 
     missing = [key for key in keys if key not in page]
     assert not missing, f"undocumented config keys: {missing}"
+
+
+def test_a_missing_graphviz_binary_is_explained_not_traced(tmp_path, monkeypatch, capsys):
+    """`pip install hook-atlas` does not install Graphviz itself, so this is the
+    first thing a new reader can hit - and it arrived as a traceback from
+    graphviz internals, several frames from anything they wrote."""
+    import json
+
+    import graphviz
+
+    trace = tmp_path / "t.json"
+    trace.write_text(
+        json.dumps(
+            {
+                "calls": [{"name": "app_start", "children": [], "impls": []}],
+                "hookspecs": {},
+                "stats": {},
+                "environment": {},
+                "desyncs": [],
+            }
+        )
+    )
+
+    def no_binary(*args, **kwargs):
+        raise graphviz.ExecutableNotFound(["dot"])
+
+    monkeypatch.setattr("hook_atlas.render.dot.to_inline_svg", no_binary)
+
+    code = cli.main(["draw", str(trace), "-o", str(tmp_path / "out.html")])
+    message = capsys.readouterr().err
+
+    assert code == 1
+    assert "Graphviz is not installed" in message
+    assert "only bindings" in message
+    assert "trace itself is fine" in message

@@ -10,16 +10,15 @@ documentation. This library captures them from a real run and draws the result.
 
 ## Status
 
-Early, and **not published to PyPI yet** - until it is, install it from source:
-
-```bash
-pip install git+https://github.com/zy1o/hook-atlas
-```
-
-The library and its `trace`/`draw`/`check` commands work. CI runs them against
+First release, `0.1.0`. Early but not raw: the library and its
+`trace`/`draw`/`check` commands work, and CI runs them against
 tox, datasette, devpi-client and pytest on every change - including tracing
 pytest while it runs datasette's own test suite - so "it works on things nobody
-described to it" is checked rather than hoped for. The first consumer is
+described to it" is checked rather than hoped for.
+
+Expect the interfaces to move while the version starts with a zero. What is
+unlikely to move is the trace format and the shape of a config, both of which
+something else already depends on. The first consumer is
 [pytest-hook-atlas](https://github.com/zy1o/pytest-hook-atlas), which publishes
 [an atlas of pytest's hooks](https://zy1o.github.io/pytest-hook-atlas/).
 
@@ -28,7 +27,7 @@ described to it" is checked rather than hoped for. The first consumer is
 Three commands. Nothing to configure, and nothing to set up first.
 
 ```bash
-pip install hook-atlas            # not on PyPI yet - see Status below
+pip install hook-atlas
 
 # 1. run whatever you normally run, with the tracer watching
 hook-atlas trace -- pytest -q tests/

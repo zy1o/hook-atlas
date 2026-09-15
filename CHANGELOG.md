@@ -5,7 +5,7 @@ and [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-09-15
 
 First release. The engine extracted from
 [pytest-hook-atlas](https://github.com/zy1o/pytest-hook-atlas), with pytest
@@ -25,6 +25,8 @@ taken out of it.
 - **A useful default for applications nobody has described.** The whole run as
   one flow, hooks unlinked, no phases invented. A trace matching no phase
   anchor falls back to that rather than drawing nothing.
+- A readable message when Graphviz is missing. `pip install hook-atlas` does
+  not install the renderer, only the bindings to it.
 - **`hook-atlas check`**, which reports desynchronised monitoring, trees whose
   counts do not add up, traces that cannot say what produced them, absolute
   paths baked into plugin names, and anything that fails to draw.

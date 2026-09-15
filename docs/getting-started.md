@@ -1,10 +1,12 @@
 # Getting started
 
 ```bash
-pip install git+https://github.com/zy1o/hook-atlas
+pip install hook-atlas
 ```
 
-Not on PyPI yet.
+Graphviz's `dot` binary has to be on your path for diagrams - the `graphviz`
+package is bindings, not the renderer. `apt install graphviz`,
+`brew install graphviz`, or whatever your platform calls it.
 
 ## Trace, draw, open
 

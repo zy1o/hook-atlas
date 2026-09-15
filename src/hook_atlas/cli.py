@@ -18,6 +18,8 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
+import graphviz
+
 from . import analysis, config, flow, tracer, validate
 from .render import dot
 
@@ -184,7 +186,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.subcommand == "draw":
         described = config.load(args.config) if args.config else None
-        written = draw(args.trace, args.output, described)
+        try:
+            written = draw(args.trace, args.output, described)
+        except graphviz.ExecutableNotFound:
+            # The `graphviz` package is bindings; the renderer is a separate
+            # binary. Without it the traceback comes from graphviz internals,
+            # several frames deep, on the first command a new user runs.
+            print(
+                "hook-atlas: Graphviz is not installed, or `dot` is not on your PATH.\n"
+                "            The graphviz Python package is only bindings - the renderer\n"
+                "            is a separate program. Try `apt install graphviz`,\n"
+                "            `brew install graphviz`, or your platform's equivalent.\n"
+                "            The trace itself is fine; only drawing needs this.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"hook-atlas: wrote {written}")
         return 0
 
