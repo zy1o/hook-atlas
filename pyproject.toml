@@ -26,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "pymdown-extensions>=10.8"]
 
 [project.scripts]
 hook-atlas = "hook_atlas.cli:main"
@@ -36,6 +37,9 @@ Issues = "https://github.com/zy1o/hook-atlas/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hook_atlas"]
+# example configs ship with the package so a downstream consumer can test
+# against them rather than keeping its own copy in step by hand
+artifacts = ["src/hook_atlas/examples/*.toml"]
 
 [tool.ruff]
 line-length = 100

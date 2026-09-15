@@ -18,7 +18,7 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
-from . import analysis, flow, tracer, validate
+from . import analysis, config, flow, tracer, validate
 from .render import dot
 
 DEFAULT_TRACE = Path(tracer.DEFAULT_TRACE_PATH)
@@ -77,22 +77,41 @@ def _report(written: Path | None, name: str) -> None:
         print(f"hook-atlas: draw it with  hook-atlas draw {written}", file=sys.stderr)
 
 
-def draw(trace_path: Path, out_path: Path, phases: list[analysis.Phase] | None = None) -> Path:
-    """Draw a trace. With no phases, the whole run is drawn as one flow.
+def draw(
+    trace_path: Path,
+    out_path: Path,
+    described: config.AtlasConfig | None = None,
+) -> Path:
+    """Draw a trace, one diagram per phase the run actually reached.
 
-    That default is the point: an application nobody has described still gets a
-    picture, rather than an empty page or a crash.
+    With nothing described, that is a single phase holding the whole run - an
+    application nobody has configured still gets a picture, rather than an empty
+    page or a crash.
     """
+    described = described or config.AtlasConfig()
     trace = analysis.load_trace(trace_path)
-    phase = analysis.resolve_phases(trace, phases or [])[0]
-    variants = flow.phase_variants(analysis.phase_subtrees(trace, phase))
-    nodes = flow.fold_repetitive(variants[0].flow) if variants else []
-    svg = dot.render_inline_svg(nodes, trace.get("hookspecs", {}), phase=phase.key)
-    out_path.write_text(_page(svg, trace) if out_path.suffix == ".html" else svg)
+    hookspecs = trace.get("hookspecs", {})
+
+    drawings = []
+    for phase in analysis.resolve_phases(trace, described.phases):
+        variants = flow.phase_variants(analysis.phase_subtrees(trace, phase))
+        nodes = flow.fold_repetitive(variants[0].flow) if variants else []
+        drawings.append(
+            (
+                phase,
+                dot.render_inline_svg(nodes, hookspecs, links=described.links, phase=phase.key),
+            )
+        )
+
+    if out_path.suffix == ".html":
+        out_path.write_text(_page(drawings, trace))
+    else:
+        # one file cannot hold several diagrams; the page format is for that
+        out_path.write_text(drawings[0][1])
     return out_path
 
 
-def _page(svg: str, trace: dict) -> str:
+def _page(drawings: list, trace: dict) -> str:
     """Wrap the diagram so a browser shows something readable.
 
     Standalone rather than styled by a site: someone running this against their
@@ -102,11 +121,16 @@ def _page(svg: str, trace: dict) -> str:
     environment = trace.get("environment", {})
     title = f"{environment.get('application', 'hook')} {environment.get('version', '')}".strip()
     stats = trace.get("stats", {})
+    body = "\n".join(
+        f"<h2>{phase.title}</h2>\n<p>{phase.description}</p>\n{svg}" if len(drawings) > 1 else svg
+        for phase, svg in drawings
+    )
     return f"""<!doctype html>
 <meta charset="utf-8">
 <title>hook flow: {title}</title>
 <style>
   body {{ font: 14px/1.5 system-ui, sans-serif; margin: 2rem; color: #222; }}
+  h2 {{ margin-top: 2.5rem; }}
   p {{ color: #555; }}
   svg {{ max-width: 100%; height: auto; }}
   @media (prefers-color-scheme: dark) {{
@@ -117,7 +141,7 @@ def _page(svg: str, trace: dict) -> str:
 <h1>{title}</h1>
 <p>{stats.get("unique_hooks", "?")} distinct hooks, {stats.get("total_calls", "?")} calls,
    recorded with pluggy {environment.get("pluggy", "?")}.</p>
-{svg}
+{body}
 """
 
 
@@ -137,9 +161,15 @@ def main(argv: list[str] | None = None) -> int:
     drawn = sub.add_parser("draw", help="render a trace as SVG or a standalone page")
     drawn.add_argument("trace", type=Path, nargs="?", default=DEFAULT_TRACE)
     drawn.add_argument("-o", "--output", type=Path, default=Path("hook-flow.html"))
+    drawn.add_argument(
+        "--config", type=Path, default=None, help="describe the application (see docs)"
+    )
 
     checked = sub.add_parser("check", help="report anything wrong with a trace")
     checked.add_argument("trace", type=Path, nargs="*", default=[DEFAULT_TRACE])
+
+    shown = sub.add_parser("config", help="print a config to copy and edit")
+    shown.add_argument("--example", default="pytest", help="which shipped example")
 
     args = parser.parse_args(argv)
 
@@ -153,8 +183,13 @@ def main(argv: list[str] | None = None) -> int:
         return run(command)
 
     if args.subcommand == "draw":
-        written = draw(args.trace, args.output)
+        described = config.load(args.config) if args.config else None
+        written = draw(args.trace, args.output, described)
         print(f"hook-atlas: wrote {written}")
+        return 0
+
+    if args.subcommand == "config":
+        print(config.example(args.example).read_text(), end="")
         return 0
 
     return validate.main([str(path) for path in args.trace])

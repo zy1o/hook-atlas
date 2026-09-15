@@ -1,0 +1,67 @@
+# pytest, described for hook-atlas.
+#
+# This is the config behind https://zy1o.github.io/pytest-hook-atlas/ - the four
+# phases its diagrams are drawn as, and where its hooks link to. It is shipped
+# here as a worked example: it is the largest pluggy application anyone is
+# likely to describe, so if a thing is expressible at all, it is expressible
+# like this.
+#
+# Get it with `hook-atlas config --example pytest > atlas.toml`.
+
+application = "pytest"
+
+# Hooks kept out of the fingerprint that decides whether two releases produced
+# the same flow. Both of these move for reasons that have nothing to do with the
+# flow: plugin_registered fires once per registered plugin, so its count tracks
+# how many plugins a release ships, and warning_recorded is replayed in a batch
+# when a wrapped phase ends, so its position marks a phase boundary rather than
+# where a warning arose. Without this, releases split into separate documents
+# over a difference of one call.
+bookkeeping = ["pytest_plugin_registered", "pytest_warning_recorded"]
+
+[docs]
+# Hooks link here, anchored as <base_url>#<anchor_prefix>.<hook_name>.
+base_url = "https://docs.pytest.org/en/stable/reference/reference.html"
+anchor_prefix = "pytest.hookspec"
+# Only hooks declared in these modules get links. pytest-xdist contributes
+# twelve hooks that pytest's reference has never heard of, and pointing them at
+# it would produce exactly the dead anchors this avoids.
+namespaces = ["_pytest.hookspec"]
+
+# Phases are drawn in the order they appear here, left to right, and take their
+# colours from that order.
+
+[[phase]]
+key = "startup"
+title = "Startup and configuration"
+anchors = ["pytest_load_initial_conftests", "pytest_configure", "pytest_sessionstart"]
+description = """
+Everything before collection begins: initial conftests are loaded, plugins \
+register, and the session is configured."""
+
+[[phase]]
+key = "collection"
+title = "Collection"
+anchors = ["pytest_collection"]
+description = """
+Finding tests. Note that pytest_make_collect_report recurses - directories \
+contain directories contain files."""
+
+[[phase]]
+key = "runtest"
+title = "The run-test protocol"
+anchors = ["pytest_runtest_protocol"]
+# Used only when the anchors match nothing. Under pytest-xdist the controlling
+# process never calls pytest_runtest_protocol - its workers do - so without this
+# its entire scheduling loop falls outside every phase and is never drawn.
+fallback_anchors = ["pytest_runtestloop"]
+description = """
+`pytest_runtestloop` runs this once per collected test. Note the rhythm: setup, \
+call and teardown are each followed by their own `makereport` and `logreport` \
+pair - three reports per test, not one."""
+
+[[phase]]
+key = "finish"
+title = "Session finish"
+anchors = ["pytest_sessionfinish", "pytest_unconfigure"]
+description = "Summary reporting and teardown of the session."

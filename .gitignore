@@ -9,3 +9,4 @@ build/
 # traces produced by running the tool
 hook-atlas-trace*.json
 *-trace.json
+site/
