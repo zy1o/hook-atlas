@@ -5,6 +5,15 @@ and [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The flow model, the renderers and the stylesheet are tested here, against
+  this package's own palette, rather than in pytest-hook-atlas. They were left
+  behind by the extraction, which meant the engine shipped its folding and
+  contrast logic with almost no coverage of its own while a downstream project
+  tested it. The contrast checks now cover every hue the palette can hand out,
+  not only the four pytest happens to use.
+
 ## [0.1.0] - 2026-09-15
 
 First release. The engine extracted from
