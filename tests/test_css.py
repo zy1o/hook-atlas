@@ -10,8 +10,9 @@ than by a reader who cannot read the diagram.
 from __future__ import annotations
 
 import pytest
-from hook_atlas.render import css
+
 from hook_atlas.doclinks import DocLinks
+from hook_atlas.render import css
 from hook_atlas.render.dot import PALETTE, SHADE_STEPS, hues_for
 
 #: Every hue the palette can hand out, not just the first few. An application

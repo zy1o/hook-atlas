@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 
 import pytest
-from hook_atlas.flow import FlowNode
-from hook_atlas.render import dot
 
 from hook_atlas.doclinks import DocLinks
+from hook_atlas.flow import FlowNode
+from hook_atlas.render import dot
 
 #: Renderers take a DocLinks, not a bare URL - an application with no
 #: documentation is the default, and must not be spelled as an empty string.
