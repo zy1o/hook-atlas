@@ -5,6 +5,20 @@ and [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Tests that borrow the tracer's module-level recorder now refuse to run when a
+  trace is already live, instead of taking it. One of them destroyed the
+  recording CI was making of the suite it was running in, which then reported
+  that there had been nothing to trace.
+
+### Changed
+
+- The "how it works" sections say when `watch()` has to be called, which is the
+  part that decides whether tracing works at all: before the application builds
+  its manager, and therefore before it is imported. Previously the ordering was
+  implied by an example rather than stated.
+
 ### Added
 
 - The flow model, the renderers and the stylesheet are tested here, against

@@ -139,12 +139,13 @@ jobs:
 
   # Trace pytest running our own test suite.
   #
-  # Also deliberate. Self-reference has one genuine hazard and we hit it: the
-  # tests that exercise watch()/attach() manipulate the same module-level state
-  # the outer trace is using, and fail when traced. They are excluded rather
-  # than worked around, because a tracer that could trace its own tracer tests
-  # would be a tracer that no longer has a single recorder, which is a worse
-  # design for a real reason.
+  # Also deliberate. Self-reference has one genuine hazard: the tests that
+  # exercise watch()/attach() borrow the same module-level recorder the outer
+  # trace is using. The `tracer_globals` fixture now refuses to run when a trace
+  # is already live, so they skip rather than steal it - this exclusion is belt
+  # and braces, not the only defence. It was the only defence once, and a single
+  # test added to the wrong file destroyed the outer recording and then let the
+  # tool report that there had been nothing to trace.
   #
   # What is left is worth having: it is the only leg where the traced suite
   # changes as we work, so it notices when our own code starts doing something

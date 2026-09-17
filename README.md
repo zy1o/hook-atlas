@@ -93,27 +93,63 @@ run, rather than `--help` or `--version`.
 
 ## How it works
 
-```python
-import pluggy
-from hook_atlas import tracer
+pluggy has offered hook monitoring for years —
+`PluginManager.add_hookcall_monitoring(before, after)` is public API. What it has
+never offered is a way to *reach a manager somebody else built*: there is no
+registry of live managers, and no notification when one appears.
 
-tracer.watch()          # trace the next plugin manager this process creates
-...                     # run the application
-tracer.write_trace()    # a JSON record of every call, in order, with provenance
+So `watch()` wraps `PluginManager.__init__`. Every manager constructed after
+that point is recorded, which means the one rule that matters is an ordering
+one: **`watch()` has to run before the application builds its manager**, and in
+practice that means before the application is imported. `hook-atlas trace` does
+exactly that — patch, then import and run your command.
+
+Recording from the constructor turns out to be earlier than any plugin can
+manage, which is why the trace includes hooks that fire while plugins are still
+being loaded.
+
+## Driving it from Python
+
+Two cases, and they are different.
+
+**Tracing a program you are not modifying** — the CLI is this, and calling it
+directly is usually easier than reproducing it:
+
+```python
+from hook_atlas.cli import run
+
+exit_code = run(["pytest", "-q", "tests/"])   # patches, then imports and runs
 ```
 
-`watch()` wraps `PluginManager.__init__`, which is the only way to reach a
-manager in a program you are not modifying. `attach(pm)` is the polite version
-for an application tracing itself.
+**An application tracing itself**, where you already hold the manager and no
+patching is needed:
 
-The program being traced is left alone. It keeps its own stdout and its own
-exit code - a wrapper that turned a failing build green would be worse than no
-wrapper at all, so that is a test.
+```python
+import pluggy
 
-From a trace you get the call tree with nesting and ordering preserved, the
-plugin behind every implementation in pluggy's real call order, hookspec
-semantics (`firstresult`, `historic`) read from the live manager rather than
-guessed, and Graphviz diagrams.
+from hook_atlas import tracer
+
+pm = pluggy.PluginManager("myapp")
+tracer.attach(pm)        # record every hook call from here on
+...
+tracer.write_trace()     # JSON: the call tree, in order, with provenance
+```
+
+`attach` returns `None` if a manager is already being recorded — two interleaved
+into one tree would be nonsense, and applications that build several are common
+enough to matter.
+
+## What a trace gives you
+
+The call tree with nesting and ordering preserved, every implementation
+attributed to the plugin that supplied it in pluggy's real call order, and
+hookspec semantics (`firstresult`, `historic`) read from the live manager rather
+than guessed. Diagrams are drawn from that; the JSON is the more useful half if
+you want to answer something no view covers.
+
+The program being traced is left alone — its stdout, its exit code, its
+behaviour. A wrapper that turned a failing build green would be worse than no
+wrapper, so that is a test.
 
 ## Configuring it for an application
 
