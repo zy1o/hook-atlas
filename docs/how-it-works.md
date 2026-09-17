@@ -7,27 +7,59 @@ report calls in a program you are not modifying.
 ## Getting in
 
 pluggy has supported hook monitoring for years —
-`PluginManager.add_hookcall_monitoring(before, after)` is public API. What it has
-no API for is *reaching a manager somebody else constructed*. There is no
-registry of live managers and no creation hook.
+`PluginManager.add_hookcall_monitoring(before, after)` is public API, and once
+you hold a manager, recording its calls is a supported thing to do.
 
-So `watch()` wraps `PluginManager.__init__`:
+The problem is holding one. There is no registry of live managers and no
+notification when one is built, so a tool that did not construct the manager has
+no way to find it.
+
+### If you own the manager
+
+`attach(pm)` and you are done. No patching, nothing clever:
 
 ```python
-def patched(self, project_name, *args, **kwargs):
-    original(self, project_name, *args, **kwargs)
-    attach(self)
+tracer.attach(pm)
 ```
 
-Process-local, reversible, and applied before the target is imported. It is the
-same technique coverage tools and debuggers use. If the application is tracing
-itself, `attach(pm)` is the polite version and no patching happens.
+### If you do not
 
-This turns out to be *earlier* than a plugin entry point can manage. pytest
-hands plugins a manager at `pytest_addoption`, by which time several hooks have
-already fired — including `pytest_cmdline_parse`, which pytest-hook-atlas
-documented for a year as structurally unobservable. Attaching at construction
-records it.
+`watch()` wraps `PluginManager.__init__`, so every manager built afterwards is
+recorded:
+
+```python
+tracer.watch()          # from here on, any manager pluggy builds is traced
+```
+
+The wrapping is process-local and reversible — the same technique coverage tools
+and debuggers use — but it buys one hard constraint, and it is the only thing
+about this worth memorising:
+
+!!! warning "Order matters, and there is no second chance"
+
+    `watch()` must run **before the application builds its manager**, which in
+    practice means before the application is imported. A manager that already
+    exists was built by the original constructor and will never be seen.
+
+`hook-atlas trace` is that ordering, made safe: patch first, then resolve the
+command's entry point, then import and run it. Doing it by hand means doing it
+in that order too.
+
+### Why the constructor, and not a plugin
+
+The obvious alternative is to load as a plugin and take the manager the
+application hands you. It works — it is how pytest-hook-atlas still captures —
+and it is strictly later.
+
+pytest is the worked example. A plugin first receives the manager at
+`pytest_addoption` — by which point `pytest_cmdline_parse`, `pytest_addhooks`
+and `pytest_addoption` itself have already been called, and a plugin-based
+tracer can never record them. `pytest_cmdline_parse` was written down as
+structurally unobservable on the strength of that, and stayed that way until
+the constructor approach recorded it.
+
+That is the whole argument for the monkeypatch: not elegance, but three hooks
+that no politer method can reach.
 
 ## Staying invisible
 

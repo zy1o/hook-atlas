@@ -91,3 +91,46 @@ def test_more_phases_than_the_palette_still_get_colours():
 
     assert len(hues) == len(keys)
     assert all(hue.startswith("#") for hue in hues.values())
+
+
+def test_a_manager_built_before_watch_is_never_seen():
+    """The one hard constraint the documentation warns about.
+
+    watch() wraps the constructor, so anything already constructed came from
+    the original and is invisible. Documented as a warning, and therefore worth
+    a test - a reader following it deserves it to be true.
+    """
+    import pluggy
+
+    from hook_atlas import tracer
+
+    hookspec = pluggy.HookspecMarker("ordering")
+    hookimpl = pluggy.HookimplMarker("ordering")
+
+    class Spec:
+        @hookspec
+        def ordering_go(self): ...
+
+    class Plugin:
+        @hookimpl
+        def ordering_go(self):
+            return 1
+
+    def manager():
+        pm = pluggy.PluginManager("ordering")
+        pm.add_hookspecs(Spec)
+        pm.register(Plugin())
+        return pm
+
+    before = manager()
+    tracer.watch()
+    try:
+        after = manager()
+        before.hook.ordering_go()
+        after.hook.ordering_go()
+        recorded = [node["name"] for node in tracer._recorder.to_dict()["calls"]]
+    finally:
+        tracer.unwatch()
+        tracer._recorder = None
+
+    assert recorded == ["ordering_go"], "only the manager built after watch() is traced"
