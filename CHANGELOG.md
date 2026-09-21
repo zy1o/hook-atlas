@@ -5,6 +5,8 @@ and [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-21
+
 ### Added
 
 - `DocLinks.documented` narrows linking to the hooks a page actually contains,
@@ -78,5 +80,6 @@ real:
   namespace was a class, which resolves to no distribution and matches no
   documented namespace.
 
-[Unreleased]: https://github.com/zy1o/hook-atlas/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zy1o/hook-atlas/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zy1o/hook-atlas/releases/tag/v0.2.0
 [0.1.0]: https://github.com/zy1o/hook-atlas/releases/tag/v0.1.0
