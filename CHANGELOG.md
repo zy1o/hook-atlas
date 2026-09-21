@@ -5,6 +5,12 @@ and [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `DocLinks.documented` narrows linking to the hooks a page actually contains,
+  not just the ones its namespaces allow. The two differ when a version's own
+  documentation is unavailable and something newer stands in for it.
+
 ### Fixed
 
 - Tests that borrow the tracer's module-level recorder now refuse to run when a

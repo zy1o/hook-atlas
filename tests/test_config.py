@@ -107,3 +107,37 @@ def test_the_pytest_example_links_only_pytest_s_own_hooks():
 def test_an_unknown_example_says_which_one():
     with pytest.raises(config.ConfigError, match="no example config"):
         config.example("nothing-like-this")
+
+
+# --------------------------------------------------------------------------
+# documentation that does not cover everything it might
+
+
+def test_links_are_withheld_for_hooks_a_page_does_not_document():
+    """Namespaces say what the documentation is *meant* to cover; `documented`
+    says what a particular page turns out to hold. They differ when a version's
+    own docs are gone and something newer stands in, and a hook removed since
+    is then in the right namespace and missing from the page."""
+    from hook_atlas.doclinks import DocLinks
+
+    links = DocLinks(
+        base_url="https://example/ref.html",
+        anchor_prefix="app.hookspec",
+        namespaces=frozenset({"app.hookspecs"}),
+        documented=frozenset({"app_still_here"}),
+    )
+
+    assert links.url_for("app_still_here", "app.hookspecs")
+    assert links.url_for("app_removed_since", "app.hookspecs") is None
+
+
+def test_without_a_documented_set_everything_in_the_namespace_links():
+    from hook_atlas.doclinks import DocLinks
+
+    links = DocLinks(
+        base_url="https://example/ref.html",
+        anchor_prefix="app.hookspec",
+        namespaces=frozenset({"app.hookspecs"}),
+    )
+
+    assert links.url_for("anything_at_all", "app.hookspecs")
