@@ -36,8 +36,13 @@ What you get:
 
 !!! tip "Trace the command you actually run"
 
-    Your flags, your plugins, your `conftest.py`. `hook-atlas trace -- pytest -q -k "not slow" -p no:randomly`
-    is traced exactly as written, and your exit code comes back unchanged.
+    Your flags, your plugins, your `conftest.py`:
+    `hook-atlas trace -- pytest -q -k "not slow" --maxfail=2` is traced exactly
+    as written, and your exit code comes back unchanged.
+
+    One exception worth knowing: a run distributed with `pytest-xdist` is traced
+    in the process you launched, not in its workers. You get the controller's
+    view, which is a real thing to look at but not the whole run.
 
 ### Where `atlas.toml` comes in
 
