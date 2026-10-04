@@ -21,6 +21,7 @@ theme:
 nav:
   - What it is: index.md
   - Getting started: getting-started.md
+  - An atlas for your own project: your-own-atlas.md
   - Describing an application: configuring.md
   - How it works: how-it-works.md
   - Releases: releases.md

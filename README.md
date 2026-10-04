@@ -39,8 +39,13 @@ hook-atlas draw
 ```
 
 That is the whole thing. Step 1 writes `hook-atlas-trace.json` beside you and
-prints where; step 2 turns it into a standalone `hook-flow.html` you can open in
-a browser, with the diagram inline and no site, server or stylesheet needed.
+prints where; step 2 turns it into a standalone `hook-flow.html` — the diagram,
+every hook with the plugins behind it, and a filter for the application's own —
+with no site, server or stylesheet needed.
+
+For the page with phases separated and hooks linked to their documentation, add
+a config and keep going: [An atlas for your own
+project](https://zy1o.github.io/hook-atlas/your-own-atlas/) is four commands.
 
 Everything after the `--` is your command, untouched. Your flags, your plugins,
 your `conftest.py`, your exit code:

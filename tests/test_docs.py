@@ -36,9 +36,21 @@ def test_the_docs_show_some_commands():
     ("page", "subcommand", "rest"), list(documented_commands()), ids=lambda value: str(value)[:40]
 )
 def test_every_documented_command_exists(page, subcommand, rest):
-    parser_commands = {"trace", "draw", "check", "config"}
+    assert subcommand in _subcommands(), f"{page} documents 'hook-atlas {subcommand}'"
 
-    assert subcommand in parser_commands, f"{page} documents 'hook-atlas {subcommand}'"
+
+def _subcommands() -> set[str]:
+    """What the CLI actually offers, asked of the CLI.
+
+    Hardcoding the list meant adding a subcommand left the docs test asserting
+    against a stale set, which it then failed for the wrong reason.
+    """
+    shown = io.StringIO()
+    with contextlib.redirect_stdout(shown), contextlib.suppress(SystemExit):
+        cli.main(["--help"])
+    listed = re.search(r"\{([a-z,-]+)\}", shown.getvalue())
+    assert listed, "could not read the subcommand list from --help"
+    return set(listed.group(1).split(","))
 
 
 @pytest.mark.parametrize(
@@ -120,3 +132,60 @@ def test_a_missing_graphviz_binary_is_explained_not_traced(tmp_path, monkeypatch
     assert "Graphviz is not installed" in message
     assert "only bindings" in message
     assert "trace itself is fine" in message
+
+
+# --------------------------------------------------------------------------
+# examples are pasted, so they must work in a bare environment
+
+
+#: Flags no bare pytest has. Each maps to the distribution that provides it,
+#: which an example using the flag has to name - otherwise a reader pastes it,
+#: pytest reports an unrecognised argument, and it looks like our bug.
+PLUGIN_FLAGS = {
+    "-n ": "pytest-xdist",
+    "--numprocesses": "pytest-xdist",
+    "--dist": "pytest-xdist",
+    "--reruns": "pytest-rerunfailures",
+    "--randomly": "pytest-randomly",
+    "no:randomly": "pytest-randomly",
+    "--timeout": "pytest-timeout",
+    "--cov": "pytest-cov",
+    "--asyncio-mode": "pytest-asyncio",
+    "--benchmark": "pytest-benchmark",
+    "--html": "pytest-html",
+}
+
+
+def documented_pages():
+    pages = list(DOCS.glob("*.md"))
+    pages.append(DOCS.parent / "README.md")
+    return [page for page in pages if page.exists()]
+
+
+@pytest.mark.parametrize("page", documented_pages(), ids=lambda p: p.name)
+def test_a_plugin_flag_names_its_plugin(page):
+    """Where an example needs a plugin, the page says which.
+
+    Not a ban - pytest-xdist is worth demonstrating, because what it does to a
+    trace is surprising. The rule is that the reader can tell what they need
+    before they paste it.
+    """
+    text = page.read_text()
+    missing = [
+        f"{flag} ({plugin})"
+        for flag, plugin in PLUGIN_FLAGS.items()
+        if flag in text and plugin not in text
+    ]
+
+    assert not missing, f"{page.name} uses plugin flags without naming the plugin: {missing}"
+
+
+def test_the_guard_would_catch_an_unattributed_flag(tmp_path):
+    """Guard the guard: a rule nothing enforces is a comment."""
+    page = tmp_path / "bad.md"
+    page.write_text("Run `pytest -q --reruns 3` to retry flaky tests.\n")
+
+    text = page.read_text()
+    missing = [flag for flag, plugin in PLUGIN_FLAGS.items() if flag in text and plugin not in text]
+
+    assert "--reruns" in missing
