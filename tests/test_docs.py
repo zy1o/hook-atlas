@@ -36,9 +36,21 @@ def test_the_docs_show_some_commands():
     ("page", "subcommand", "rest"), list(documented_commands()), ids=lambda value: str(value)[:40]
 )
 def test_every_documented_command_exists(page, subcommand, rest):
-    parser_commands = {"trace", "draw", "check", "config"}
+    assert subcommand in _subcommands(), f"{page} documents 'hook-atlas {subcommand}'"
 
-    assert subcommand in parser_commands, f"{page} documents 'hook-atlas {subcommand}'"
+
+def _subcommands() -> set[str]:
+    """What the CLI actually offers, asked of the CLI.
+
+    Hardcoding the list meant adding a subcommand left the docs test asserting
+    against a stale set, which it then failed for the wrong reason.
+    """
+    shown = io.StringIO()
+    with contextlib.redirect_stdout(shown), contextlib.suppress(SystemExit):
+        cli.main(["--help"])
+    listed = re.search(r"\{([a-z,-]+)\}", shown.getvalue())
+    assert listed, "could not read the subcommand list from --help"
+    return set(listed.group(1).split(","))
 
 
 @pytest.mark.parametrize(

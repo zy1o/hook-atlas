@@ -5,6 +5,23 @@ and [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-04
+
+### Added
+
+- `draw` produces the whole page, not just diagrams: every hook observed, with
+  the plugins behind it in pluggy's call order, and a checkbox to hide the
+  application's own - which appears only when something of yours is there to
+  reveal. Still one self-contained file, no site and no server.
+- `hook-atlas init-site` writes a small mkdocs project around a trace, for when
+  the page should have a title and a URL. Same renderer underneath, so there is
+  one implementation rather than two.
+- `draw -o page.md` emits a fragment for a site that supplies its own page
+  furniture; `.html` still gives the standalone document.
+- `implementers.for_trace`, the single-run answer to who implements what.
+- A step-by-step guide: [An atlas for your own
+  project](https://zy1o.github.io/hook-atlas/your-own-atlas/).
+
 ## [0.2.0] - 2026-09-21
 
 ### Added
@@ -80,6 +97,7 @@ real:
   namespace was a class, which resolves to no distribution and matches no
   documented namespace.
 
-[Unreleased]: https://github.com/zy1o/hook-atlas/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/zy1o/hook-atlas/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/zy1o/hook-atlas/releases/tag/v0.3.0
 [0.2.0]: https://github.com/zy1o/hook-atlas/releases/tag/v0.2.0
 [0.1.0]: https://github.com/zy1o/hook-atlas/releases/tag/v0.1.0

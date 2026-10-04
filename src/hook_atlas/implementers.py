@@ -221,6 +221,17 @@ def _implementations_by_hook(
     return {hook: tuple(items) for hook, items in found.items()}
 
 
+def for_trace(
+    trace: dict[str, Any], internal: tuple[str, ...] = ()
+) -> dict[str, tuple[Implementation, ...]]:
+    """Who implements each hook in one trace, in pluggy's call order.
+
+    :func:`reconcile` answers the same question across a range of releases,
+    which is what a versioned site needs. A single run needs only this.
+    """
+    return _implementations_by_hook(trace, internal)
+
+
 def reconcile(
     traces: dict[str, dict[str, Any]],
     versions: tuple[str, ...],

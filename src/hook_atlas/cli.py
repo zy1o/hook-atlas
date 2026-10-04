@@ -20,8 +20,8 @@ from pathlib import Path
 
 import graphviz
 
-from . import analysis, config, flow, tracer, validate
-from .render import dot
+from . import analysis, config, flow, scaffold, tracer, validate
+from .render import dot, page
 
 DEFAULT_TRACE = Path(tracer.DEFAULT_TRACE_PATH)
 
@@ -84,67 +84,35 @@ def draw(
     out_path: Path,
     described: config.AtlasConfig | None = None,
 ) -> Path:
-    """Draw a trace, one diagram per phase the run actually reached.
+    """Draw a trace as a self-contained page, or as a bare SVG.
 
-    With nothing described, that is a single phase holding the whole run - an
-    application nobody has configured still gets a picture, rather than an empty
-    page or a crash.
+    An `.html` destination gets the whole thing: a diagram per phase the run
+    reached, every hook with the plugins behind it, and a filter for the
+    application's own. Anything else gets one SVG, because a single image
+    cannot hold a table.
+
+    With nothing described, the phases collapse to one holding the whole run -
+    an application nobody has configured still gets a picture, rather than an
+    empty page or a crash.
     """
     described = described or config.AtlasConfig()
     trace = analysis.load_trace(trace_path)
-    hookspecs = trace.get("hookspecs", {})
 
-    drawings = []
-    for phase in analysis.resolve_phases(trace, described.phases):
-        variants = flow.phase_variants(analysis.phase_subtrees(trace, phase))
-        nodes = flow.fold_repetitive(variants[0].flow) if variants else []
-        drawings.append(
-            (
-                phase,
-                dot.render_inline_svg(nodes, hookspecs, links=described.links, phase=phase.key),
-            )
+    if out_path.suffix in (".html", ".md"):
+        # markdown for a site that supplies its own page furniture, html for a
+        # file somebody opens. Same renderer either way.
+        out_path.write_text(page.render(trace, described, standalone=out_path.suffix == ".html"))
+        return out_path
+
+    phase = analysis.resolve_phases(trace, described.phases)[0]
+    variants = flow.phase_variants(analysis.phase_subtrees(trace, phase))
+    nodes = flow.fold_repetitive(variants[0].flow) if variants else []
+    out_path.write_text(
+        dot.render_inline_svg(
+            nodes, trace.get("hookspecs", {}), links=described.links, phase=phase.key
         )
-
-    if out_path.suffix == ".html":
-        out_path.write_text(_page(drawings, trace))
-    else:
-        # one file cannot hold several diagrams; the page format is for that
-        out_path.write_text(drawings[0][1])
-    return out_path
-
-
-def _page(drawings: list, trace: dict) -> str:
-    """Wrap the diagram so a browser shows something readable.
-
-    Standalone rather than styled by a site: someone running this against their
-    own project has no site, and telling them to go and build one before they
-    can look at the picture would rather defeat the exercise.
-    """
-    environment = trace.get("environment", {})
-    title = f"{environment.get('application', 'hook')} {environment.get('version', '')}".strip()
-    stats = trace.get("stats", {})
-    body = "\n".join(
-        f"<h2>{phase.title}</h2>\n<p>{phase.description}</p>\n{svg}" if len(drawings) > 1 else svg
-        for phase, svg in drawings
     )
-    return f"""<!doctype html>
-<meta charset="utf-8">
-<title>hook flow: {title}</title>
-<style>
-  body {{ font: 14px/1.5 system-ui, sans-serif; margin: 2rem; color: #222; }}
-  h2 {{ margin-top: 2.5rem; }}
-  p {{ color: #555; }}
-  svg {{ max-width: 100%; height: auto; }}
-  @media (prefers-color-scheme: dark) {{
-    body {{ background: #1b1b1b; color: #e3e3e3; }}
-    p {{ color: #b4b4b4; }}
-  }}
-</style>
-<h1>{title}</h1>
-<p>{stats.get("unique_hooks", "?")} distinct hooks, {stats.get("total_calls", "?")} calls,
-   recorded with pluggy {environment.get("pluggy", "?")}.</p>
-{body}
-"""
+    return out_path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -172,6 +140,16 @@ def main(argv: list[str] | None = None) -> int:
 
     shown = sub.add_parser("config", help="print a config to copy and edit")
     shown.add_argument("--example", default="pytest", help="which shipped example")
+
+    site = sub.add_parser("init-site", help="write an mkdocs project around a trace")
+    site.add_argument("directory", type=Path)
+    site.add_argument("--name", default=None, help="what to call it; defaults to the directory")
+    site.add_argument(
+        "--command",
+        default="pytest -q",
+        help="the command to trace, written into build.sh",
+    )
+    site.add_argument("--example", default="pytest", help="which shipped config to start from")
 
     args = parser.parse_args(argv)
 
@@ -206,6 +184,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.subcommand == "config":
         print(config.example(args.example).read_text(), end="")
+        return 0
+
+    if args.subcommand == "init-site":
+        written = scaffold.init_site(
+            args.directory,
+            name=args.name or args.directory.name,
+            command=args.command,
+            example=args.example,
+        )
+        for path in written:
+            print(f"  {path}")
+        print(f"\nnext: cd {args.directory} && ./build.sh && mkdocs serve")
+        print("needs mkdocs and mkdocs-material: pip install mkdocs mkdocs-material")
         return 0
 
     return validate.main([str(path) for path in args.trace])
