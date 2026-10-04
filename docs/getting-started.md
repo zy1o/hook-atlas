@@ -27,6 +27,13 @@ hook-atlas: wrote hook-flow.html
 `hook-flow.html` is standalone: the diagram is inline, there is no server and
 nothing to install to look at it.
 
+!!! note "The flags in these examples are pytest's own"
+
+    `-q`, `-k`, `--lf`, `--maxfail` need nothing installed beyond pytest. Where
+    an example does need a plugin, it says which one — because the examples are
+    here to be pasted, and a flag from a plugin you do not have fails in a way
+    that looks like our problem rather than a missing dependency.
+
 Other applications work the same way. A second `--` belongs to the program, not
 to us, so this reaches tox whole:
 

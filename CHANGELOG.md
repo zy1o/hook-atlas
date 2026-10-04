@@ -24,6 +24,8 @@ and [semantic versioning](https://semver.org/).
 - `draw -o page.md` emits a fragment for a site that supplies its own page
   furniture; `.html` still gives the standalone document.
 - `implementers.for_trace`, the single-run answer to who implements what.
+- Documentation examples assume no plugins. Every command runs against a bare
+  pytest; where one needs a plugin it is named, and a test enforces it.
 - A step-by-step guide: [An atlas for your own
   project](https://zy1o.github.io/hook-atlas/your-own-atlas/).
 

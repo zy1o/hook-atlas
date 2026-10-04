@@ -38,11 +38,15 @@ What you get:
 
     Your flags, your plugins, your `conftest.py`:
     `hook-atlas trace -- pytest -q -k "not slow" --maxfail=2` is traced exactly
-    as written, and your exit code comes back unchanged.
+    as written, and your exit code comes back unchanged. Those flags are
+    pytest's own; nothing here assumes a plugin you have not installed.
 
-    One exception worth knowing: a run distributed with `pytest-xdist` is traced
-    in the process you launched, not in its workers. You get the controller's
-    view, which is a real thing to look at but not the whole run.
+    One case where it matters which plugins you have: a run distributed with
+    **pytest-xdist** (`-n 2`, `-n auto`) is traced in the process you launched
+    and not in its workers, because the tracer is process-local. You get the
+    controller — which schedules the run and receives results, and is worth
+    seeing — but no `pytest_runtest_protocol`, because the controller never
+    runs a test. Drop `-n` to trace a whole run in one process.
 
 ### Where `atlas.toml` comes in
 
