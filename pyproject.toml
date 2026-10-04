@@ -50,8 +50,13 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/sample-project is a fixture, not part of this suite: it exists to be
+# traced by the template check. Collected, its conftest competes with ours and
+# its tests are counted as ours.
+norecursedirs = ["sample-project"]
 markers = [
     "applications: runs a real pluggy application in a subprocess",
+    "template: runs the guide end to end; needs mkdocs and Graphviz",
 ]
 # the application tests need those applications installed, so they are opt-in
-addopts = "-m 'not applications'"
+addopts = "-m 'not applications and not template'"

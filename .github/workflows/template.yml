@@ -1,0 +1,51 @@
+name: Template
+
+# Runs the guide. docs/your-own-atlas.md promises four commands and a page,
+# then an mkdocs site on top; this does both against a committed sample project.
+#
+# Weekly as well as on changes, because most of what can break it is not here:
+# mkdocs, mkdocs-material, pytest, Graphviz, and whatever pytest plugins arrive
+# with them. A guide that stopped working a month ago is worse than one that
+# never worked, because somebody is following it.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "src/hook_atlas/**"
+      - "tests/sample-project/**"
+      - "tests/applications/test_template.py"
+      - "docs/your-own-atlas.md"
+      - ".github/workflows/template.yml"
+  schedule:
+    # Thursday 09:17 UTC. Deliberately not on the hour and not at midnight:
+    # GitHub queues scheduled workflows under load, and the top of the hour is
+    # the worst of it.
+    - cron: "17 9 * * 4"
+  workflow_dispatch:
+
+jobs:
+  guide:
+    name: four commands, then a site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # the `graphviz` package is bindings; rendering needs the `dot` binary
+      - run: sudo apt-get install -y graphviz
+      - run: pip install -e ".[dev]" mkdocs mkdocs-material
+      # The page is the deliverable, and no number of passing assertions shows
+      # what it looks like. The test writes a copy where this can find it.
+      - name: Run the guide end to end
+        env:
+          HOOK_ATLAS_TEMPLATE_OUT: ${{ github.workspace }}/artifact/hook-flow.html
+        run: pytest -q -m template tests/applications/test_template.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: the-page-the-guide-produces
+          path: artifact/
+          if-no-files-found: warn

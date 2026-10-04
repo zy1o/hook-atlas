@@ -9,6 +9,11 @@ and [semantic versioning](https://semver.org/).
 
 ### Added
 
+- CI runs the guide end to end, on every change and weekly, against a committed
+  sample project whose conftest implements hooks of its own - so the check is
+  that somebody else's code is found, named and told apart from pytest's, not
+  merely that a page appeared. The page it produces is kept as an artifact.
+
 - `draw` produces the whole page, not just diagrams: every hook observed, with
   the plugins behind it in pluggy's call order, and a checkbox to hide the
   application's own - which appears only when something of yours is there to
